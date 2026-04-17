@@ -216,6 +216,7 @@ resource "azurerm_linux_web_app" "main" {
     application_stack {
       python_version = "3.11"
     }
+    app_command_line = "gunicorn --bind=0.0.0.0:8000 --workers=2 --timeout=60 app:app"
   }
 
   app_settings = {
