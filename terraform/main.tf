@@ -177,7 +177,7 @@ resource "azurerm_cognitive_account" "doc_intelligence" {
 
 resource "azurerm_cognitive_account" "openai" {
   name                = "oai-${var.project}-${local.suffix}-001"
-  location            = azurerm_resource_group.main.location
+  location            = "eastus"
   resource_group_name = azurerm_resource_group.main.name
   kind                = "OpenAI"
   sku_name            = "S0"
@@ -324,18 +324,7 @@ resource "azurerm_eventgrid_system_topic" "storage" {
   tags                   = local.common_tags
 }
 
-resource "azurerm_eventgrid_system_topic_event_subscription" "blob_created" {
-  name                = "evgs-blob-created-${var.environment}"
-  system_topic        = azurerm_eventgrid_system_topic.storage.name
-  resource_group_name = azurerm_resource_group.main.name
-
-  included_event_types = ["Microsoft.Storage.BlobCreated"]
-
-  subject_filter {
-    subject_begins_with = "/blobServices/default/containers/${azurerm_storage_container.invoices.name}/"
-  }
-
-  azure_function_endpoint {
-    function_id = "${azurerm_linux_function_app.main.id}/functions/process_invoice"
-  }
-}
+# NOTE: Event Grid subscription removed from Terraform.
+# The function endpoint must exist before the subscription can be validated.
+# Create it manually after deploying the function code:
+# Azure Portal → Event Grid System Topics → evgt-invoiceai-storage-* → Event Subscriptions → Add
