@@ -236,6 +236,7 @@ resource "azurerm_linux_web_app" "main" {
 
     "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
     "FLASK_ENV"                      = "production"
+    "FLASK_APP"                      = "wsgi"
   }
 
   logs {
