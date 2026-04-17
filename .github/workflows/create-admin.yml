@@ -28,11 +28,22 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Run create_admin script on App Service
+      - name: Run create_admin script via Kudu API
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az webapp ssh \
+            KUDU_USER=$(az webapp deployment list-publishing-credentials \
               --resource-group rg-invoiceai-prod-centralindia-001 \
               --name app-invoiceai-prod-centralindia-001 \
-              --command "cd /home/site/wwwroot && ADMIN_USERNAME='${{ github.event.inputs.username }}' ADMIN_PASSWORD='${{ github.event.inputs.password }}' python scripts/create_admin.py"
+              --query publishingUserName -o tsv)
+
+            KUDU_PASS=$(az webapp deployment list-publishing-credentials \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --name app-invoiceai-prod-centralindia-001 \
+              --query publishingPassword -o tsv)
+
+            curl -s -X POST \
+              "https://app-invoiceai-prod-centralindia-001.scm.azurewebsites.net/api/command" \
+              -u "$KUDU_USER:$KUDU_PASS" \
+              -H "Content-Type: application/json" \
+              -d "{\"command\": \"cd /home/site/wwwroot && ADMIN_USERNAME='${{ github.event.inputs.username }}' ADMIN_PASSWORD='${{ github.event.inputs.password }}' python scripts/create_admin.py\", \"dir\": \"/home/site/wwwroot\"}"
