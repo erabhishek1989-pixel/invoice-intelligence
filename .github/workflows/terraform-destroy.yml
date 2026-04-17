@@ -1,0 +1,63 @@
+name: Terraform Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" to confirm you want to delete all resources'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_WORKING_DIR: terraform
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Check confirmation input
+        if: github.event.inputs.confirm != 'destroy'
+        run: |
+          echo "You must type 'destroy' to confirm. Got: '${{ github.event.inputs.confirm }}'"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Destroy
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform destroy \
+            -input=false \
+            -auto-approve \
+            -var="doc_intelligence_key=${{ secrets.AZURE_DOC_INTELLIGENCE_KEY }}" \
+            -var="openai_api_key=${{ secrets.AZURE_OPENAI_API_KEY }}" \
+            -var="secret_key=${{ secrets.SECRET_KEY }}" \
+            -var="database_url=${{ secrets.DATABASE_URL }}" \
+            -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}"
