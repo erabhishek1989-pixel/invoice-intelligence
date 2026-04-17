@@ -253,17 +253,17 @@ DATABASE_URL
 
 ## Azure Resources — Naming Convention
 ```
-rg-invoiceai-prod-uksouth-001        resource group
-app-invoiceai-prod-uksouth-001       app service
-asp-invoiceai-prod-uksouth-001       app service plan
+rg-invoiceai-prod-westus-001        resource group
+app-invoiceai-prod-westus-001       app service
+asp-invoiceai-prod-westus-001       app service plan
 stinvoiceaiprod001                   storage account (no hyphens, max 24 chars)
-func-invoiceai-prod-uksouth-001      azure function
+func-invoiceai-prod-westus-001      azure function
 docintel-invoiceai-prod-001          document intelligence
-oai-invoiceai-prod-uksouth-001       azure openai
-sql-invoiceai-prod-uksouth-001       sql server
+oai-invoiceai-prod-westus-001       azure openai
+sql-invoiceai-prod-westus-001       sql server
 sqldb-invoiceai-prod-001             sql database
-kv-invoiceai-prod-uksouth-001        key vault
-ai-invoiceai-prod-uksouth-001        application insights
+kv-invoiceai-prod-westus-001        key vault
+ai-invoiceai-prod-westus-001        application insights
 ```
 
 ---
@@ -271,8 +271,8 @@ ai-invoiceai-prod-uksouth-001        application insights
 ## Terraform Backend
 Create this ONCE manually before first pipeline run:
 ```bash
-az group create --name rg-terraform-state-invoiceai --location uksouth
-az storage account create --name stinvoiceaitfstate --resource-group rg-terraform-state-invoiceai --sku Standard_LRS --location uksouth
+az group create --name rg-terraform-state-invoiceai --location westus
+az storage account create --name stinvoiceaitfstate --resource-group rg-terraform-state-invoiceai --sku Standard_LRS --location westus
 az storage container create --name tfstate --account-name stinvoiceaitfstate
 ```
 
