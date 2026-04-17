@@ -1,0 +1,51 @@
+name: Bootstrap Terraform State
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Create Terraform State Storage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create resource group
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az group create \
+              --name rg-terraform-state-invoiceai \
+              --location centralindia
+
+      - name: Create storage account
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az storage account create \
+              --name stinvoiceaitfstate \
+              --resource-group rg-terraform-state-invoiceai \
+              --sku Standard_LRS \
+              --location centralindia \
+              --min-tls-version TLS1_2
+
+      - name: Create tfstate container
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az storage container create \
+              --name tfstate \
+              --account-name stinvoiceaitfstate
+
+      - name: Done
+        run: echo "Terraform state storage ready. You can now run terraform-deploy."
