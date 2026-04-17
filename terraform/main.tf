@@ -207,7 +207,7 @@ resource "azurerm_service_plan" "main" {
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   os_type             = "Linux"
-  sku_name            = "B1"
+  sku_name            = "F1"
   tags                = local.common_tags
 }
 
@@ -228,7 +228,6 @@ resource "azurerm_linux_web_app" "main" {
     application_stack {
       python_version = "3.11"
     }
-    always_on = true
   }
 
   app_settings = {
