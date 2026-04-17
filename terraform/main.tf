@@ -184,21 +184,9 @@ resource "azurerm_cognitive_account" "openai" {
   tags                = local.common_tags
 }
 
-resource "azurerm_cognitive_deployment" "gpt4o" {
-  name                 = var.openai_deployment_name
-  cognitive_account_id = azurerm_cognitive_account.openai.id
-
-  model {
-    format  = "OpenAI"
-    name    = "gpt-4o"
-    version = "2024-11-20"
-  }
-
-  scale {
-    type     = "Standard"
-    capacity = 10
-  }
-}
+# NOTE: azurerm_cognitive_deployment removed — free subscriptions have 0 GPT-4o quota.
+# Create the gpt-4o deployment manually in Azure Portal once quota is approved:
+# Azure OpenAI Studio → Deployments → Deploy model → gpt-4o
 
 # ─── App Service Plan ────────────────────────────────────────────────────────
 
