@@ -47,14 +47,5 @@ jobs:
               --name tfstate \
               --account-name stinvoiceaitfstate
 
-      - name: Grant User Access Administrator role
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az role assignment create \
-              --assignee ${{ secrets.AZURE_CLIENT_ID }} \
-              --role "User Access Administrator" \
-              --scope "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-
       - name: Done
-        run: echo "Bootstrap complete. Terraform state storage ready and role assigned. You can now run terraform-deploy."
+        run: echo "Terraform state storage ready. You can now run terraform-deploy."
