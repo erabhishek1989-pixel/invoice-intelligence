@@ -28,28 +28,11 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Create admin user
+      - name: Run create_admin script on App Service
         uses: azure/cli@v2
         with:
           inlineScript: |
             az webapp ssh \
               --resource-group rg-invoiceai-prod-centralindia-001 \
               --name app-invoiceai-prod-centralindia-001 \
-              --command "cd /home/site/wwwroot && python -c \"
-from app import create_app, db
-from app.models import User
-app = create_app()
-with app.app_context():
-    db.create_all()
-    existing = User.query.filter_by(username='${{ github.event.inputs.username }}').first()
-    if existing:
-        print('User already exists — updating password')
-        existing.set_password('${{ github.event.inputs.password }}')
-    else:
-        u = User(username='${{ github.event.inputs.username }}', role='admin')
-        u.set_password('${{ github.event.inputs.password }}')
-        db.session.add(u)
-        print('Admin user created')
-    db.session.commit()
-    print('Done')
-\""
+              --command "cd /home/site/wwwroot && ADMIN_USERNAME='${{ github.event.inputs.username }}' ADMIN_PASSWORD='${{ github.event.inputs.password }}' python scripts/create_admin.py"
