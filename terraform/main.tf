@@ -293,20 +293,11 @@ resource "azurerm_storage_account" "function" {
   tags                     = local.common_tags
 }
 
-resource "azurerm_service_plan" "function" {
-  name                = "asp-${var.project}-func-${local.suffix}-001"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  os_type             = "Linux"
-  sku_name            = "Y1"
-  tags                = local.common_tags
-}
-
 resource "azurerm_linux_function_app" "main" {
   name                       = "func-${var.project}-${local.suffix}-001"
   location                   = azurerm_resource_group.main.location
   resource_group_name        = azurerm_resource_group.main.name
-  service_plan_id            = azurerm_service_plan.function.id
+  service_plan_id            = azurerm_service_plan.main.id
   storage_account_name       = azurerm_storage_account.function.name
   storage_account_access_key = azurerm_storage_account.function.primary_access_key
   https_only                 = true
