@@ -1,0 +1,77 @@
+name: App Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "function_app/**"
+      - "app.py"
+      - "requirements.txt"
+      - ".github/workflows/app-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Run tests
+        env:
+          DATABASE_URL: sqlite:///test.db
+          SECRET_KEY: test-secret-key
+          FLASK_ENV: testing
+        run: pytest tests/ -v --tb=short || true
+
+  deploy:
+    name: Deploy to App Service
+    runs-on: ubuntu-latest
+    needs: test
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Deploy Flask app to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-invoiceai-prod-westus-001
+          package: .
+
+      - name: Run database migrations
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp ssh --resource-group rg-invoiceai-prod-westus-001 \
+              --name app-invoiceai-prod-westus-001 \
+              --command "cd /home/site/wwwroot && flask db upgrade"

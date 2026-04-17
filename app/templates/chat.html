@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Ask a Question — Invoice Intelligence{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-8 offset-md-2">
+    <h2 class="mb-4">Ask About Your Finances</h2>
+
+    <div id="chat-box" class="border rounded p-3 mb-3" style="min-height:300px; background:#f8f9fa;">
+      <p class="text-muted">Ask anything — "How much did I spend last month?", "Which invoices are unpaid?"</p>
+    </div>
+
+    <div class="input-group">
+      <input type="text" id="question-input" class="form-control"
+             placeholder="Type your question or press the mic button..." />
+      <button class="btn btn-outline-secondary" id="mic-btn" title="Voice input (Chrome only)">&#127908;</button>
+      <button class="btn btn-primary" id="send-btn">Ask</button>
+    </div>
+    <small class="text-muted">Voice input requires Chrome or Edge.</small>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/voice.js') }}"></script>
+{% endblock %}

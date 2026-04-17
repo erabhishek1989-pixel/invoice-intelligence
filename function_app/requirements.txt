@@ -1,0 +1,5 @@
+azure-functions==1.21.3
+azure-ai-formrecognizer==3.3.3
+azure-storage-blob==12.20.0
+pyodbc==5.1.0
+sqlalchemy==2.0.30
