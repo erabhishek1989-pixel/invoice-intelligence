@@ -65,13 +65,14 @@ jobs:
       - name: Deploy Flask app to App Service
         uses: azure/webapps-deploy@v3
         with:
-          app-name: app-invoiceai-prod-westus-001
+          app-name: app-invoiceai-prod-centralindia-001
           package: .
 
       - name: Run database migrations
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az webapp ssh --resource-group rg-invoiceai-prod-westus-001 \
-              --name app-invoiceai-prod-westus-001 \
-              --command "cd /home/site/wwwroot && flask db upgrade"
+            az webapp config appsettings set \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --name app-invoiceai-prod-centralindia-001 \
+              --settings POST_BUILD_COMMAND="flask db upgrade"

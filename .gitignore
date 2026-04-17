@@ -12,7 +12,6 @@ env/
 # Flask / SQLite
 instance/
 *.db
-migrations/
 
 # Environment — NEVER commit
 .env
