@@ -232,22 +232,22 @@ resource "azurerm_linux_web_app" "main" {
   }
 
   app_settings = {
-    "AZURE_STORAGE_CONTAINER"          = azurerm_storage_container.invoices.name
-    "AZURE_DOC_INTELLIGENCE_ENDPOINT"  = azurerm_cognitive_account.doc_intelligence.endpoint
-    "AZURE_OPENAI_ENDPOINT"            = azurerm_cognitive_account.openai.endpoint
-    "AZURE_OPENAI_DEPLOYMENT"          = var.openai_deployment_name
-    "APPINSIGHTS_INSTRUMENTATIONKEY"   = azurerm_application_insights.main.instrumentation_key
+    "AZURE_STORAGE_CONTAINER"               = azurerm_storage_container.invoices.name
+    "AZURE_DOC_INTELLIGENCE_ENDPOINT"       = azurerm_cognitive_account.doc_intelligence.endpoint
+    "AZURE_OPENAI_ENDPOINT"                 = azurerm_cognitive_account.openai.endpoint
+    "AZURE_OPENAI_DEPLOYMENT"               = var.openai_deployment_name
+    "APPINSIGHTS_INSTRUMENTATIONKEY"        = azurerm_application_insights.main.instrumentation_key
     "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.main.connection_string
 
     # Secrets pulled from Key Vault via references
     "AZURE_STORAGE_CONNECTION_STRING" = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=doc-intelligence-key)"
     "AZURE_DOC_INTELLIGENCE_KEY"      = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=doc-intelligence-key)"
     "AZURE_OPENAI_API_KEY"            = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=openai-api-key)"
-    "SECRET_KEY"                       = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=flask-secret-key)"
-    "DATABASE_URL"                     = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=database-url)"
+    "SECRET_KEY"                      = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=flask-secret-key)"
+    "DATABASE_URL"                    = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=database-url)"
 
-    "SCM_DO_BUILD_DURING_DEPLOYMENT"   = "true"
-    "FLASK_ENV"                        = "production"
+    "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
+    "FLASK_ENV"                      = "production"
   }
 
   logs {
