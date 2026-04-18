@@ -57,6 +57,15 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Clear POST_BUILD_COMMAND before deploy
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp config appsettings delete \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --name app-invoiceai-prod-centralindia-001 \
+              --setting-names POST_BUILD_COMMAND || true
+
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -67,12 +76,3 @@ jobs:
         with:
           app-name: app-invoiceai-prod-centralindia-001
           package: .
-
-      - name: Clear POST_BUILD_COMMAND if previously set
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az webapp config appsettings delete \
-              --resource-group rg-invoiceai-prod-centralindia-001 \
-              --name app-invoiceai-prod-centralindia-001 \
-              --setting-names POST_BUILD_COMMAND || true
