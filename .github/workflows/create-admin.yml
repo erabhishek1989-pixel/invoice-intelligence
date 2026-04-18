@@ -46,4 +46,4 @@ jobs:
               "https://app-invoiceai-prod-centralindia-001.scm.azurewebsites.net/api/command" \
               -u "$KUDU_USER:$KUDU_PASS" \
               -H "Content-Type: application/json" \
-              -d "{\"command\": \"cd /home/site/wwwroot && ADMIN_USERNAME='${{ github.event.inputs.username }}' ADMIN_PASSWORD='${{ github.event.inputs.password }}' python scripts/create_admin.py\", \"dir\": \"/home/site/wwwroot\"}"
+              -d "{\"command\": \"cd /home/site/wwwroot && source antenv/bin/activate && ADMIN_USERNAME='${{ github.event.inputs.username }}' ADMIN_PASSWORD='${{ github.event.inputs.password }}' python scripts/create_admin.py\", \"dir\": \"/home/site/wwwroot\"}"

@@ -26,4 +26,11 @@ def create_app():
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(chat_bp)
 
+    from app import models  # noqa: F401 — ensure models are registered before create_all
+    with app.app_context():
+        try:
+            db.create_all()
+        except Exception:
+            pass  # DB may not be reachable yet; migrations handle schema on next request
+
     return app
