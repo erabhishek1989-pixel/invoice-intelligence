@@ -42,8 +42,15 @@ jobs:
               --name app-invoiceai-prod-centralindia-001 \
               --query publishingPassword -o tsv)
 
-            curl -s -X POST \
+            RESULT=$(curl -s -X POST \
               "https://app-invoiceai-prod-centralindia-001.scm.azurewebsites.net/api/command" \
               -u "$KUDU_USER:$KUDU_PASS" \
               -H "Content-Type: application/json" \
-              -d "{\"command\": \"cd /home/site/wwwroot && source antenv/bin/activate && ADMIN_USERNAME='${{ github.event.inputs.username }}' ADMIN_PASSWORD='${{ github.event.inputs.password }}' python scripts/create_admin.py\", \"dir\": \"/home/site/wwwroot\"}"
+              -d "{\"command\": \"cd /home/site/wwwroot && source antenv/bin/activate && ADMIN_USERNAME='${{ github.event.inputs.username }}' ADMIN_PASSWORD='${{ github.event.inputs.password }}' python scripts/create_admin.py\", \"dir\": \"/home/site/wwwroot\"}")
+
+            echo "=== Kudu Response ==="
+            echo "$RESULT"
+
+            EXIT_CODE=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ExitCode',1))" 2>/dev/null || echo "1")
+            echo "Exit code: $EXIT_CODE"
+            [ "$EXIT_CODE" = "0" ] || exit 1
