@@ -188,6 +188,151 @@ resource "azurerm_cognitive_account" "openai" {
 # Create the gpt-4o deployment manually in Azure Portal once quota is approved:
 # Azure OpenAI Studio → Deployments → Deploy model → gpt-4o
 
+# ─── Virtual Network ─────────────────────────────────────────────────────────
+
+resource "azurerm_virtual_network" "main" {
+  name                = "vnet-${var.project}-${local.suffix}-001"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  address_space       = ["10.0.0.0/16"]
+  tags                = local.common_tags
+}
+
+# Subnet for private endpoints (SQL, Storage, Key Vault)
+resource "azurerm_subnet" "private_endpoints" {
+  name                 = "snet-pe-${local.suffix}"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = ["10.0.1.0/24"]
+
+  private_endpoint_network_policies = "Disabled"
+}
+
+# Subnet for App Service VNet integration (outbound)
+resource "azurerm_subnet" "app_service" {
+  name                 = "snet-app-${local.suffix}"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = ["10.0.2.0/24"]
+
+  delegation {
+    name = "app-service"
+    service_delegation {
+      name    = "Microsoft.Web/serverFarms"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
+    }
+  }
+}
+
+# ─── Private DNS Zones ────────────────────────────────────────────────────────
+
+resource "azurerm_private_dns_zone" "sql" {
+  name                = "privatelink.database.windows.net"
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.common_tags
+}
+
+resource "azurerm_private_dns_zone" "blob" {
+  name                = "privatelink.blob.core.windows.net"
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.common_tags
+}
+
+resource "azurerm_private_dns_zone" "keyvault" {
+  name                = "privatelink.vaultcore.azure.net"
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.common_tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "sql" {
+  name                  = "pdnslink-sql"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.sql.name
+  virtual_network_id    = azurerm_virtual_network.main.id
+  registration_enabled  = false
+  tags                  = local.common_tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
+  name                  = "pdnslink-blob"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.blob.name
+  virtual_network_id    = azurerm_virtual_network.main.id
+  registration_enabled  = false
+  tags                  = local.common_tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "keyvault" {
+  name                  = "pdnslink-kv"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.keyvault.name
+  virtual_network_id    = azurerm_virtual_network.main.id
+  registration_enabled  = false
+  tags                  = local.common_tags
+}
+
+# ─── Private Endpoints ────────────────────────────────────────────────────────
+
+resource "azurerm_private_endpoint" "sql" {
+  name                = "pe-sql-${local.suffix}-001"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  subnet_id           = azurerm_subnet.private_endpoints.id
+  tags                = local.common_tags
+
+  private_service_connection {
+    name                           = "psc-sql"
+    private_connection_resource_id = azurerm_mssql_server.main.id
+    subresource_names              = ["sqlServer"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "sql-dns-group"
+    private_dns_zone_ids = [azurerm_private_dns_zone.sql.id]
+  }
+}
+
+resource "azurerm_private_endpoint" "blob" {
+  name                = "pe-blob-${local.suffix}-001"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  subnet_id           = azurerm_subnet.private_endpoints.id
+  tags                = local.common_tags
+
+  private_service_connection {
+    name                           = "psc-blob"
+    private_connection_resource_id = azurerm_storage_account.main.id
+    subresource_names              = ["blob"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "blob-dns-group"
+    private_dns_zone_ids = [azurerm_private_dns_zone.blob.id]
+  }
+}
+
+resource "azurerm_private_endpoint" "keyvault" {
+  name                = "pe-kv-${local.suffix}-001"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  subnet_id           = azurerm_subnet.private_endpoints.id
+  tags                = local.common_tags
+
+  private_service_connection {
+    name                           = "psc-kv"
+    private_connection_resource_id = azurerm_key_vault.main.id
+    subresource_names              = ["vault"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "kv-dns-group"
+    private_dns_zone_ids = [azurerm_private_dns_zone.keyvault.id]
+  }
+}
+
 # ─── App Service Plan ────────────────────────────────────────────────────────
 
 resource "azurerm_service_plan" "main" {
@@ -202,11 +347,12 @@ resource "azurerm_service_plan" "main" {
 # ─── App Service ─────────────────────────────────────────────────────────────
 
 resource "azurerm_linux_web_app" "main" {
-  name                = "app-${var.project}-${local.suffix}-001"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  service_plan_id     = azurerm_service_plan.main.id
-  https_only          = true
+  name                      = "app-${var.project}-${local.suffix}-001"
+  location                  = azurerm_resource_group.main.location
+  resource_group_name       = azurerm_resource_group.main.name
+  service_plan_id           = azurerm_service_plan.main.id
+  https_only                = true
+  virtual_network_subnet_id = azurerm_subnet.app_service.id
 
   identity {
     type = "SystemAssigned"
