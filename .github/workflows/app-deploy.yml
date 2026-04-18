@@ -68,11 +68,11 @@ jobs:
           app-name: app-invoiceai-prod-centralindia-001
           package: .
 
-      - name: Run database migrations
+      - name: Clear POST_BUILD_COMMAND if previously set
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az webapp config appsettings set \
+            az webapp config appsettings delete \
               --resource-group rg-invoiceai-prod-centralindia-001 \
               --name app-invoiceai-prod-centralindia-001 \
-              --settings POST_BUILD_COMMAND="flask db upgrade"
+              --setting-names POST_BUILD_COMMAND || true

@@ -7,7 +7,13 @@ from flask import current_app
 from alembic import context
 
 config = context.config
-fileConfig(config.config_file_name)
+
+if config.config_file_name is not None:
+    try:
+        fileConfig(config.config_file_name)
+    except Exception:
+        pass
+
 logger = logging.getLogger("alembic.env")
 
 
