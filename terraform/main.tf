@@ -165,23 +165,25 @@ resource "azurerm_key_vault_secret" "sql_admin_password" {
 # ─── Document Intelligence ───────────────────────────────────────────────────
 
 resource "azurerm_cognitive_account" "doc_intelligence" {
-  name                = "docintel-${var.project}-${var.environment}-001"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  kind                = "FormRecognizer"
-  sku_name            = "F0"
-  tags                = local.common_tags
+  name                  = "docintel-${var.project}-${var.environment}-001"
+  location              = azurerm_resource_group.main.location
+  resource_group_name   = azurerm_resource_group.main.name
+  kind                  = "FormRecognizer"
+  sku_name              = "F0"
+  custom_subdomain_name = "docintel-${var.project}-${var.environment}-001"
+  tags                  = local.common_tags
 }
 
 # ─── Azure OpenAI ────────────────────────────────────────────────────────────
 
 resource "azurerm_cognitive_account" "openai" {
-  name                = "oai-${var.project}-${local.suffix}-001"
-  location            = "eastus"
-  resource_group_name = azurerm_resource_group.main.name
-  kind                = "OpenAI"
-  sku_name            = "S0"
-  tags                = local.common_tags
+  name                  = "oai-${var.project}-${local.suffix}-001"
+  location              = "eastus"
+  resource_group_name   = azurerm_resource_group.main.name
+  kind                  = "OpenAI"
+  sku_name              = "S0"
+  custom_subdomain_name = "oai-${var.project}-${local.suffix}-001"
+  tags                  = local.common_tags
 }
 
 # NOTE: azurerm_cognitive_deployment removed — free subscriptions have 0 GPT-4o quota.
