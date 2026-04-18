@@ -1,0 +1,12 @@
+.git
+.github
+terraform
+tests
+*.md
+.env
+.gitignore
+.webignore
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
