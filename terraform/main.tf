@@ -436,6 +436,7 @@ resource "azurerm_linux_function_app" "main" {
   storage_account_name       = azurerm_storage_account.function.name
   storage_account_access_key = azurerm_storage_account.function.primary_access_key
   https_only                 = true
+  virtual_network_subnet_id  = azurerm_subnet.app_service.id
 
   identity {
     type = "SystemAssigned"
@@ -476,3 +477,128 @@ resource "azurerm_eventgrid_system_topic" "storage" {
 # The function endpoint must exist before the subscription can be validated.
 # Create it manually after deploying the function code:
 # Azure Portal → Event Grid System Topics → evgt-invoiceai-storage-* → Event Subscriptions → Add
+
+# ─── East US VNet for OpenAI Private Endpoint ────────────────────────────────
+
+resource "azurerm_virtual_network" "eastus" {
+  name                = "vnet-${var.project}-prod-eastus-001"
+  location            = "eastus"
+  resource_group_name = azurerm_resource_group.main.name
+  address_space       = ["10.1.0.0/16"]
+  tags                = local.common_tags
+}
+
+resource "azurerm_subnet" "eastus_private_endpoints" {
+  name                 = "snet-pe-prod-eastus"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.eastus.name
+  address_prefixes     = ["10.1.1.0/24"]
+
+  private_endpoint_network_policies = "Disabled"
+}
+
+# ─── VNet Peering: Central India ↔ East US ───────────────────────────────────
+
+resource "azurerm_virtual_network_peering" "centralindia_to_eastus" {
+  name                         = "peer-centralindia-to-eastus"
+  resource_group_name          = azurerm_resource_group.main.name
+  virtual_network_name         = azurerm_virtual_network.main.name
+  remote_virtual_network_id    = azurerm_virtual_network.eastus.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
+}
+
+resource "azurerm_virtual_network_peering" "eastus_to_centralindia" {
+  name                         = "peer-eastus-to-centralindia"
+  resource_group_name          = azurerm_resource_group.main.name
+  virtual_network_name         = azurerm_virtual_network.eastus.name
+  remote_virtual_network_id    = azurerm_virtual_network.main.id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
+}
+
+# ─── Private DNS Zones: OpenAI + Cognitive Services ──────────────────────────
+
+resource "azurerm_private_dns_zone" "openai" {
+  name                = "privatelink.openai.azure.com"
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.common_tags
+}
+
+resource "azurerm_private_dns_zone" "cognitiveservices" {
+  name                = "privatelink.cognitiveservices.azure.com"
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.common_tags
+}
+
+# Link OpenAI DNS zone to both VNets so both regions can resolve it
+resource "azurerm_private_dns_zone_virtual_network_link" "openai_centralindia" {
+  name                  = "pdnslink-openai-centralindia"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.openai.name
+  virtual_network_id    = azurerm_virtual_network.main.id
+  registration_enabled  = false
+  tags                  = local.common_tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "openai_eastus" {
+  name                  = "pdnslink-openai-eastus"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.openai.name
+  virtual_network_id    = azurerm_virtual_network.eastus.id
+  registration_enabled  = false
+  tags                  = local.common_tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "cognitiveservices" {
+  name                  = "pdnslink-cognitiveservices"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.cognitiveservices.name
+  virtual_network_id    = azurerm_virtual_network.main.id
+  registration_enabled  = false
+  tags                  = local.common_tags
+}
+
+# ─── Private Endpoint: Azure OpenAI (East US) ────────────────────────────────
+
+resource "azurerm_private_endpoint" "openai" {
+  name                = "pe-oai-prod-eastus-001"
+  location            = "eastus"
+  resource_group_name = azurerm_resource_group.main.name
+  subnet_id           = azurerm_subnet.eastus_private_endpoints.id
+  tags                = local.common_tags
+
+  private_service_connection {
+    name                           = "psc-oai"
+    private_connection_resource_id = azurerm_cognitive_account.openai.id
+    subresource_names              = ["account"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "oai-dns-group"
+    private_dns_zone_ids = [azurerm_private_dns_zone.openai.id]
+  }
+}
+
+# ─── Private Endpoint: Document Intelligence (Central India) ─────────────────
+
+resource "azurerm_private_endpoint" "doc_intelligence" {
+  name                = "pe-docintel-${local.suffix}-001"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  subnet_id           = azurerm_subnet.private_endpoints.id
+  tags                = local.common_tags
+
+  private_service_connection {
+    name                           = "psc-docintel"
+    private_connection_resource_id = azurerm_cognitive_account.doc_intelligence.id
+    subresource_names              = ["account"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "docintel-dns-group"
+    private_dns_zone_ids = [azurerm_private_dns_zone.cognitiveservices.id]
+  }
+}
