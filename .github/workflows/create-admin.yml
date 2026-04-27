@@ -42,11 +42,14 @@ jobs:
               --name app-invoiceai-prod-centralindia-001 \
               --query publishingPassword -o tsv)
 
+            U_B64=$(printf '%s' '${{ github.event.inputs.username }}' | base64 -w 0)
+            P_B64=$(printf '%s' '${{ github.event.inputs.password }}' | base64 -w 0)
+
             RESULT=$(curl -s -X POST \
               "https://app-invoiceai-prod-centralindia-001.scm.azurewebsites.net/api/command" \
               -u "$KUDU_USER:$KUDU_PASS" \
               -H "Content-Type: application/json" \
-              -d "{\"command\": \"bash -c 'source /home/site/wwwroot/antenv/bin/activate && ADMIN_USERNAME=${{ github.event.inputs.username }} ADMIN_PASSWORD=${{ github.event.inputs.password }} python /home/site/wwwroot/scripts/create_admin.py'\", \"dir\": \"/home/site/wwwroot\"}")
+              -d "{\"command\": \"bash -c 'source /home/site/wwwroot/antenv/bin/activate && python /home/site/wwwroot/scripts/create_admin.py $U_B64 $P_B64'\", \"dir\": \"/home/site/wwwroot\"}")
 
             echo "=== Kudu Response ==="
             echo "$RESULT"
