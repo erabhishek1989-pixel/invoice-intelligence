@@ -141,25 +141,25 @@ resource "azurerm_key_vault" "main" {
 
 resource "azurerm_key_vault_secret" "doc_intelligence_key" {
   name         = "doc-intelligence-key"
-  value        = var.doc_intelligence_key
+  value        = azurerm_cognitive_account.doc_intelligence.primary_access_key
   key_vault_id = azurerm_key_vault.main.id
 }
 
 resource "azurerm_key_vault_secret" "openai_api_key" {
   name         = "openai-api-key"
-  value        = var.openai_api_key
+  value        = azurerm_cognitive_account.openai.primary_access_key
   key_vault_id = azurerm_key_vault.main.id
 }
 
 resource "azurerm_key_vault_secret" "secret_key" {
   name         = "flask-secret-key"
-  value        = var.secret_key
+  value        = random_password.secret_key.result
   key_vault_id = azurerm_key_vault.main.id
 }
 
 resource "azurerm_key_vault_secret" "database_url" {
   name         = "database-url"
-  value        = var.database_url
+  value        = "mssql+pyodbc://${var.sql_admin_login}:${var.sql_admin_password}@${azurerm_mssql_server.main.fully_qualified_domain_name}/${azurerm_mssql_database.main.name}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no"
   key_vault_id = azurerm_key_vault.main.id
 }
 
