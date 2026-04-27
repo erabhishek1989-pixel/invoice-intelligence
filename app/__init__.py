@@ -1,8 +1,12 @@
+import logging
 import os
+
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
+
+logger = logging.getLogger(__name__)
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -31,8 +35,8 @@ def create_app():
         try:
             db.create_all()
             _create_admin_if_configured()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Startup DB init skipped: %s", e)
 
     return app
 
