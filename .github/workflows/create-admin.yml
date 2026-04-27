@@ -49,7 +49,7 @@ jobs:
               "https://app-invoiceai-prod-centralindia-001.scm.azurewebsites.net/api/command" \
               -u "$KUDU_USER:$KUDU_PASS" \
               -H "Content-Type: application/json" \
-              -d "{\"command\": \"bash -c 'source /home/site/wwwroot/antenv/bin/activate && python /home/site/wwwroot/scripts/create_admin.py $U_B64 $P_B64'\", \"dir\": \"/home/site/wwwroot\"}")
+              -d "{\"command\": \"/home/site/wwwroot/antenv/bin/python /home/site/wwwroot/scripts/create_admin.py $U_B64 $P_B64\", \"dir\": \"/home/site/wwwroot\"}")
 
             echo "=== Kudu Response ==="
             echo "$RESULT"
