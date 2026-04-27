@@ -375,14 +375,11 @@ resource "azurerm_linux_web_app" "main" {
     "APPINSIGHTS_INSTRUMENTATIONKEY"        = azurerm_application_insights.main.instrumentation_key
     "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.main.connection_string
 
-    # Direct values
     "AZURE_STORAGE_CONNECTION_STRING" = azurerm_storage_account.main.primary_connection_string
-
-    # Secrets pulled from Key Vault via references
-    "AZURE_DOC_INTELLIGENCE_KEY" = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=doc-intelligence-key)"
-    "AZURE_OPENAI_API_KEY"       = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=openai-api-key)"
-    "SECRET_KEY"                 = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.main.name};SecretName=flask-secret-key)"
-    "DATABASE_URL"               = "mssql+pyodbc://${var.sql_admin_login}:${var.sql_admin_password}@${azurerm_mssql_server.main.fully_qualified_domain_name}/${azurerm_mssql_database.main.name}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no"
+    "AZURE_DOC_INTELLIGENCE_KEY"      = var.doc_intelligence_key
+    "AZURE_OPENAI_API_KEY"            = var.openai_api_key
+    "SECRET_KEY"                      = var.secret_key
+    "DATABASE_URL"                    = "mssql+pyodbc://${var.sql_admin_login}:${var.sql_admin_password}@${azurerm_mssql_server.main.fully_qualified_domain_name}/${azurerm_mssql_database.main.name}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no"
 
     "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
     "FLASK_ENV"                      = "production"
