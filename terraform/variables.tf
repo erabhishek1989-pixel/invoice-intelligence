@@ -22,30 +22,6 @@ variable "owner" {
   default     = "er.abhishek1989@gmail.com"
 }
 
-variable "doc_intelligence_key" {
-  description = "Azure Document Intelligence API key"
-  type        = string
-  sensitive   = true
-}
-
-variable "openai_api_key" {
-  description = "Azure OpenAI API key"
-  type        = string
-  sensitive   = true
-}
-
-variable "secret_key" {
-  description = "Flask application secret key"
-  type        = string
-  sensitive   = true
-}
-
-variable "database_url" {
-  description = "SQLAlchemy database connection string"
-  type        = string
-  sensitive   = true
-}
-
 variable "sql_admin_login" {
   description = "Azure SQL administrator login username"
   type        = string

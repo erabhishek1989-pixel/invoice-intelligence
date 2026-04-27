@@ -68,10 +68,6 @@ jobs:
             -input=false \
             -detailed-exitcode \
             -out=tfplan \
-            -var="doc_intelligence_key=${{ secrets.AZURE_DOC_INTELLIGENCE_KEY }}" \
-            -var="openai_api_key=${{ secrets.AZURE_OPENAI_API_KEY }}" \
-            -var="secret_key=${{ secrets.SECRET_KEY }}" \
-            -var="database_url=${{ secrets.DATABASE_URL }}" \
             -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}"
         continue-on-error: true
 

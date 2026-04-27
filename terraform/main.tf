@@ -27,6 +27,13 @@ provider "azurerm" {
 
 data "azurerm_client_config" "current" {}
 
+# ─── Random secrets (generated once, stored in Terraform state) ──────────────
+
+resource "random_password" "secret_key" {
+  length  = 64
+  special = false
+}
+
 # ─── Resource Group ──────────────────────────────────────────────────────────
 
 resource "azurerm_resource_group" "main" {
@@ -376,9 +383,9 @@ resource "azurerm_linux_web_app" "main" {
     "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.main.connection_string
 
     "AZURE_STORAGE_CONNECTION_STRING" = azurerm_storage_account.main.primary_connection_string
-    "AZURE_DOC_INTELLIGENCE_KEY"      = var.doc_intelligence_key
-    "AZURE_OPENAI_API_KEY"            = var.openai_api_key
-    "SECRET_KEY"                      = var.secret_key
+    "AZURE_DOC_INTELLIGENCE_KEY"      = azurerm_cognitive_account.doc_intelligence.primary_access_key
+    "AZURE_OPENAI_API_KEY"            = azurerm_cognitive_account.openai.primary_access_key
+    "SECRET_KEY"                      = random_password.secret_key.result
     "DATABASE_URL"                    = "mssql+pyodbc://${var.sql_admin_login}:${var.sql_admin_password}@${azurerm_mssql_server.main.fully_qualified_domain_name}/${azurerm_mssql_database.main.name}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no"
 
     "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
