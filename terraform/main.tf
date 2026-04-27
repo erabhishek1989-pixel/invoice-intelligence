@@ -460,8 +460,8 @@ resource "azurerm_linux_function_app" "main" {
     "AZURE_STORAGE_CONNECTION_STRING" = azurerm_storage_account.main.primary_connection_string
     "AZURE_STORAGE_CONTAINER"         = azurerm_storage_container.invoices.name
     "AZURE_DOC_INTELLIGENCE_ENDPOINT" = azurerm_cognitive_account.doc_intelligence.endpoint
-    "AZURE_DOC_INTELLIGENCE_KEY"      = var.doc_intelligence_key
-    "DATABASE_URL"                    = var.database_url
+    "AZURE_DOC_INTELLIGENCE_KEY"      = azurerm_cognitive_account.doc_intelligence.primary_access_key
+    "DATABASE_URL"                    = "mssql+pyodbc://${var.sql_admin_login}:${var.sql_admin_password}@${azurerm_mssql_server.main.fully_qualified_domain_name}/${azurerm_mssql_database.main.name}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no"
     "APPINSIGHTS_INSTRUMENTATIONKEY"  = azurerm_application_insights.main.instrumentation_key
     "FUNCTIONS_WORKER_RUNTIME"        = "python"
     "AzureWebJobsFeatureFlags"        = "EnableWorkerIndexing"
@@ -481,10 +481,21 @@ resource "azurerm_eventgrid_system_topic" "storage" {
   tags                   = local.common_tags
 }
 
-# NOTE: Event Grid subscription removed from Terraform.
-# The function endpoint must exist before the subscription can be validated.
-# Create it manually after deploying the function code:
-# Azure Portal → Event Grid System Topics → evgt-invoiceai-storage-* → Event Subscriptions → Add
+resource "azurerm_eventgrid_system_topic_event_subscription" "blob_trigger" {
+  name                = "invoice-blob-trigger"
+  system_topic        = azurerm_eventgrid_system_topic.storage.name
+  resource_group_name = azurerm_resource_group.main.name
+
+  azure_function_endpoint {
+    function_id = "${azurerm_linux_function_app.main.id}/functions/process_invoice"
+  }
+
+  included_event_types = ["Microsoft.Storage.BlobCreated"]
+
+  subject_filter {
+    subject_begins_with = "/blobServices/default/containers/invoices/"
+  }
+}
 
 # ─── East US VNet for OpenAI Private Endpoint ────────────────────────────────
 
