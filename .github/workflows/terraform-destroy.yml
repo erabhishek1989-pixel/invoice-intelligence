@@ -22,8 +22,6 @@ jobs:
   destroy:
     name: Terraform Destroy
     runs-on: ubuntu-latest
-    environment: production
-
     steps:
       - name: Check confirmation input
         if: github.event.inputs.confirm != 'destroy'
@@ -56,8 +54,4 @@ jobs:
           terraform destroy \
             -input=false \
             -auto-approve \
-            -var="doc_intelligence_key=${{ secrets.AZURE_DOC_INTELLIGENCE_KEY }}" \
-            -var="openai_api_key=${{ secrets.AZURE_OPENAI_API_KEY }}" \
-            -var="secret_key=${{ secrets.SECRET_KEY }}" \
-            -var="database_url=${{ secrets.DATABASE_URL }}" \
             -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}"
