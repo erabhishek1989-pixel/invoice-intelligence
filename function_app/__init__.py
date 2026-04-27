@@ -1,5 +1,5 @@
 import azure.functions as func
-from function_app.processor import process_invoice_document
+from processor import process_invoice_document
 
 app = func.FunctionApp()
 
