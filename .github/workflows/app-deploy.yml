@@ -82,61 +82,46 @@ jobs:
           package: function_app
           scm-do-build-during-deployment: true
 
-      - name: Sync function triggers to ARM
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            # v2 Python model functions are decorator-based and won't appear in the
-            # ARM API until syncfunctiontriggers is called. Event Grid validates against
-            # ARM so this must run before the subscription is created/updated.
-            az rest --method post \
-              --url "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/rg-invoiceai-prod-centralindia-001/providers/Microsoft.Web/sites/func-invoiceai-prod-centralindia-001/syncfunctiontriggers?api-version=2022-03-01"
-            echo "Trigger sync requested — waiting 45s for ARM to propagate"
-            sleep 45
-
       - name: Wire up Event Grid subscription
         uses: azure/cli@v2
         with:
           inlineScript: |
-            FUNC_ID="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/rg-invoiceai-prod-centralindia-001/providers/Microsoft.Web/sites/func-invoiceai-prod-centralindia-001/functions/process_invoice"
+            # Python v2 decorator-based functions do not register as individual ARM
+            # resources, so --endpoint-type azurefunction always fails validation.
+            # Use --endpoint-type webhook with the runtime URL instead — validation
+            # is a live handshake with the running function, not an ARM lookup.
             RG="rg-invoiceai-prod-centralindia-001"
+            FUNC_NAME="func-invoiceai-prod-centralindia-001"
             TOPIC="evgt-invoiceai-storage-prod-centralindia-001"
             SUB_NAME="invoice-blob-trigger"
 
-            # Retry loop — ARM propagation can still lag after sync
-            for i in {1..5}; do
-              if az functionapp function show \
-                  --resource-group "$RG" \
-                  --name func-invoiceai-prod-centralindia-001 \
-                  --function-name process_invoice \
-                  --output none 2>/dev/null; then
-                echo "process_invoice confirmed in ARM — proceeding"
-                break
-              fi
-              echo "Attempt $i: function not visible in ARM yet, waiting 15s..."
-              sleep 15
-            done
+            MASTER_KEY=$(az functionapp keys list \
+              --resource-group "$RG" \
+              --name "$FUNC_NAME" \
+              --query masterKey -o tsv)
+
+            WEBHOOK_URL="https://${FUNC_NAME}.azurewebsites.net/runtime/webhooks/eventgrid?functionName=process_invoice&code=${MASTER_KEY}"
 
             if az eventgrid system-topic event-subscription show \
                 --name "$SUB_NAME" \
                 --resource-group "$RG" \
                 --system-topic-name "$TOPIC" \
                 --output none 2>/dev/null; then
-              echo "Subscription exists — updating"
+              echo "Subscription exists — updating endpoint"
               az eventgrid system-topic event-subscription update \
                 --name "$SUB_NAME" \
                 --resource-group "$RG" \
                 --system-topic-name "$TOPIC" \
-                --endpoint-type azurefunction \
-                --endpoint "$FUNC_ID"
+                --endpoint-type webhook \
+                --endpoint "$WEBHOOK_URL"
             else
               echo "Subscription not found — creating"
               az eventgrid system-topic event-subscription create \
                 --name "$SUB_NAME" \
                 --resource-group "$RG" \
                 --system-topic-name "$TOPIC" \
-                --endpoint-type azurefunction \
-                --endpoint "$FUNC_ID" \
+                --endpoint-type webhook \
+                --endpoint "$WEBHOOK_URL" \
                 --included-event-types Microsoft.Storage.BlobCreated \
                 --subject-begins-with "/blobServices/default/containers/invoices/"
             fi
