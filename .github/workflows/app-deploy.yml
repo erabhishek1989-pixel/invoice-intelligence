@@ -82,8 +82,17 @@ jobs:
           package: function_app
           scm-do-build-during-deployment: true
 
-      - name: Wait for function to become available
-        run: sleep 30
+      - name: Sync function triggers to ARM
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            # v2 Python model functions are decorator-based and won't appear in the
+            # ARM API until syncfunctiontriggers is called. Event Grid validates against
+            # ARM so this must run before the subscription is created/updated.
+            az rest --method post \
+              --url "https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/rg-invoiceai-prod-centralindia-001/providers/Microsoft.Web/sites/func-invoiceai-prod-centralindia-001/syncfunctiontriggers?api-version=2022-03-01"
+            echo "Trigger sync requested — waiting 45s for ARM to propagate"
+            sleep 45
 
       - name: Wire up Event Grid subscription
         uses: azure/cli@v2
@@ -94,12 +103,26 @@ jobs:
             TOPIC="evgt-invoiceai-storage-prod-centralindia-001"
             SUB_NAME="invoice-blob-trigger"
 
+            # Retry loop — ARM propagation can still lag after sync
+            for i in {1..5}; do
+              if az functionapp function show \
+                  --resource-group "$RG" \
+                  --name func-invoiceai-prod-centralindia-001 \
+                  --function-name process_invoice \
+                  --output none 2>/dev/null; then
+                echo "process_invoice confirmed in ARM — proceeding"
+                break
+              fi
+              echo "Attempt $i: function not visible in ARM yet, waiting 15s..."
+              sleep 15
+            done
+
             if az eventgrid system-topic event-subscription show \
                 --name "$SUB_NAME" \
                 --resource-group "$RG" \
                 --system-topic-name "$TOPIC" \
                 --output none 2>/dev/null; then
-              echo "Subscription exists — updating endpoint"
+              echo "Subscription exists — updating"
               az eventgrid system-topic event-subscription update \
                 --name "$SUB_NAME" \
                 --resource-group "$RG" \
