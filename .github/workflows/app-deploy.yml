@@ -82,23 +82,45 @@ jobs:
           package: function_app
           scm-do-build-during-deployment: true
 
+      - name: Restart function app and wait for warm-up
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az functionapp restart \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --name func-invoiceai-prod-centralindia-001
+            echo "Waiting 40s for function app to start and register triggers..."
+            sleep 40
+
       - name: Wire up Event Grid subscription
         uses: azure/cli@v2
         with:
           inlineScript: |
             # Python v2 decorator-based functions do not register as individual ARM
-            # resources, so --endpoint-type azurefunction always fails validation.
-            # Use --endpoint-type webhook with the runtime URL instead — validation
-            # is a live handshake with the running function, not an ARM lookup.
+            # resources so --endpoint-type azurefunction always fails validation.
+            # Use --endpoint-type webhook — Event Grid sends a live validation
+            # handshake to the function URL which the runtime handles automatically.
             RG="rg-invoiceai-prod-centralindia-001"
             FUNC_NAME="func-invoiceai-prod-centralindia-001"
             TOPIC="evgt-invoiceai-storage-prod-centralindia-001"
             SUB_NAME="invoice-blob-trigger"
 
+            # Use the eventgrid_extension system key (scoped to Event Grid only)
             MASTER_KEY=$(az functionapp keys list \
               --resource-group "$RG" \
               --name "$FUNC_NAME" \
-              --query masterKey -o tsv)
+              --query "systemKeys.eventgrid_extension" -o tsv)
+
+            # Fall back to master key if extension key not yet provisioned
+            if [ -z "$MASTER_KEY" ] || [ "$MASTER_KEY" = "None" ]; then
+              echo "eventgrid_extension key not found, falling back to master key"
+              MASTER_KEY=$(az functionapp keys list \
+                --resource-group "$RG" \
+                --name "$FUNC_NAME" \
+                --query masterKey -o tsv)
+            fi
+
+            echo "Key retrieved (length: ${#MASTER_KEY})"
 
             WEBHOOK_URL="https://${FUNC_NAME}.azurewebsites.net/runtime/webhooks/eventgrid?functionName=process_invoice&code=${MASTER_KEY}"
 
