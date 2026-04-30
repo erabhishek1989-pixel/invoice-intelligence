@@ -74,3 +74,32 @@ jobs:
         with:
           app-name: app-invoiceai-prod-centralindia-001
           package: .
+
+      - name: Deploy Function App
+        uses: azure/functions-action@v1
+        with:
+          app-name: func-invoiceai-prod-centralindia-001
+          package: function_app
+          scm-do-build-during-deployment: true
+
+      - name: Wire up Event Grid subscription
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            FUNC_ID="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/rg-invoiceai-prod-centralindia-001/providers/Microsoft.Web/sites/func-invoiceai-prod-centralindia-001/functions/process_invoice"
+
+            az eventgrid system-topic event-subscription create \
+              --name invoice-blob-trigger \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --system-topic-name evgt-invoiceai-storage-prod-centralindia-001 \
+              --endpoint-type azurefunction \
+              --endpoint "$FUNC_ID" \
+              --included-event-types Microsoft.Storage.BlobCreated \
+              --subject-begins-with "/blobServices/default/containers/invoices/" \
+            2>/dev/null || \
+            az eventgrid system-topic event-subscription update \
+              --name invoice-blob-trigger \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --system-topic-name evgt-invoiceai-storage-prod-centralindia-001 \
+              --endpoint-type azurefunction \
+              --endpoint "$FUNC_ID"
