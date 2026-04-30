@@ -497,7 +497,16 @@ resource "azurerm_linux_function_app" "main" {
   tags = local.common_tags
 }
 
-# ─── Event Grid — trigger Function on blob upload ────────────────────────────
+# ─── Event Grid — trigger Function on blob upload (via Storage Queue) ────────
+#
+# Architecture: Blob upload → Event Grid → Storage Queue → Azure Function
+# Using a Queue endpoint avoids the webhook validation handshake entirely.
+# Event Grid writes the blob event JSON to the queue; the Function reads it.
+
+resource "azurerm_storage_queue" "invoice_processing" {
+  name                 = "invoice-processing"
+  storage_account_name = azurerm_storage_account.main.name
+}
 
 resource "azurerm_eventgrid_system_topic" "storage" {
   name                   = "evgt-${var.project}-storage-${local.suffix}-001"
@@ -508,9 +517,26 @@ resource "azurerm_eventgrid_system_topic" "storage" {
   tags                   = local.common_tags
 }
 
-# Event Grid subscription is created in app-deploy.yml after function code is deployed.
-# Azure requires the function endpoint to exist before the subscription can be validated,
-# so it cannot be managed here in Terraform (which runs before any code is deployed).
+resource "azurerm_eventgrid_system_topic_event_subscription" "blob_trigger" {
+  name                = "invoice-blob-trigger"
+  system_topic        = azurerm_eventgrid_system_topic.storage.name
+  resource_group_name = azurerm_resource_group.main.name
+
+  storage_queue_endpoint {
+    storage_account_id = azurerm_storage_account.main.id
+    queue_name         = azurerm_storage_queue.invoice_processing.name
+    # Messages expire after 7 days if not consumed
+    queue_message_time_to_live_in_seconds = 604800
+  }
+
+  included_event_types = ["Microsoft.Storage.BlobCreated"]
+
+  subject_filter {
+    subject_begins_with = "/blobServices/default/containers/invoices/"
+  }
+
+  depends_on = [azurerm_storage_queue.invoice_processing]
+}
 
 # ─── East US VNet for OpenAI Private Endpoint ────────────────────────────────
 
