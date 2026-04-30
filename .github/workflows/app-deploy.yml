@@ -82,47 +82,60 @@ jobs:
           package: function_app
           scm-do-build-during-deployment: true
 
-      - name: Restart function app and wait for warm-up
+      - name: Wait for function app webhook to respond
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az functionapp restart \
-              --resource-group rg-invoiceai-prod-centralindia-001 \
-              --name func-invoiceai-prod-centralindia-001
-            echo "Waiting 40s for function app to start and register triggers..."
-            sleep 40
+            # Do NOT restart the app — scm-do-build-during-deployment triggers its
+            # own restart when the Oryx build finishes. An extra restart mid-build
+            # causes a second restart afterward, so Event Grid always hits the app
+            # while it is still coming up.
+            # Instead, poll the webhook URL directly until we get an HTTP response
+            # (any code except 000 = connection failure) which proves the runtime
+            # is up and will handle Event Grid's validation handshake.
+            RG="rg-invoiceai-prod-centralindia-001"
+            FUNC_NAME="func-invoiceai-prod-centralindia-001"
+
+            MASTER_KEY=$(az functionapp keys list \
+              --resource-group "$RG" \
+              --name "$FUNC_NAME" \
+              --query masterKey -o tsv)
+            echo "Master key retrieved (length: ${#MASTER_KEY})"
+
+            WEBHOOK_URL="https://${FUNC_NAME}.azurewebsites.net/runtime/webhooks/eventgrid?functionName=process_invoice&code=${MASTER_KEY}"
+
+            echo "Polling webhook until function runtime is ready..."
+            for i in {1..20}; do
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+                --connect-timeout 10 --max-time 20 \
+                -X POST "$WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -H "aeg-event-type: Notification" \
+                -d '{}' 2>/dev/null || echo "000")
+              echo "Attempt $i: HTTP $HTTP"
+              if [ "$HTTP" != "000" ]; then
+                echo "Function runtime is responding — ready for Event Grid"
+                break
+              fi
+              sleep 15
+            done
+
+            if [ "$HTTP" = "000" ]; then
+              echo "ERROR: Function app did not respond after all retries"
+              exit 1
+            fi
+
+            # Export the key and URL for the next step via env file
+            echo "MASTER_KEY=${MASTER_KEY}" >> "$GITHUB_ENV"
+            echo "WEBHOOK_URL=${WEBHOOK_URL}" >> "$GITHUB_ENV"
 
       - name: Wire up Event Grid subscription
         uses: azure/cli@v2
         with:
           inlineScript: |
-            # Python v2 decorator-based functions do not register as individual ARM
-            # resources so --endpoint-type azurefunction always fails validation.
-            # Use --endpoint-type webhook — Event Grid sends a live validation
-            # handshake to the function URL which the runtime handles automatically.
             RG="rg-invoiceai-prod-centralindia-001"
-            FUNC_NAME="func-invoiceai-prod-centralindia-001"
             TOPIC="evgt-invoiceai-storage-prod-centralindia-001"
             SUB_NAME="invoice-blob-trigger"
-
-            # Use the eventgrid_extension system key (scoped to Event Grid only)
-            MASTER_KEY=$(az functionapp keys list \
-              --resource-group "$RG" \
-              --name "$FUNC_NAME" \
-              --query "systemKeys.eventgrid_extension" -o tsv)
-
-            # Fall back to master key if extension key not yet provisioned
-            if [ -z "$MASTER_KEY" ] || [ "$MASTER_KEY" = "None" ]; then
-              echo "eventgrid_extension key not found, falling back to master key"
-              MASTER_KEY=$(az functionapp keys list \
-                --resource-group "$RG" \
-                --name "$FUNC_NAME" \
-                --query masterKey -o tsv)
-            fi
-
-            echo "Key retrieved (length: ${#MASTER_KEY})"
-
-            WEBHOOK_URL="https://${FUNC_NAME}.azurewebsites.net/runtime/webhooks/eventgrid?functionName=process_invoice&code=${MASTER_KEY}"
 
             if az eventgrid system-topic event-subscription show \
                 --name "$SUB_NAME" \
@@ -135,7 +148,7 @@ jobs:
                 --resource-group "$RG" \
                 --system-topic-name "$TOPIC" \
                 --endpoint-type webhook \
-                --endpoint "$WEBHOOK_URL"
+                --endpoint "${{ env.WEBHOOK_URL }}"
             else
               echo "Subscription not found — creating"
               az eventgrid system-topic event-subscription create \
@@ -143,7 +156,7 @@ jobs:
                 --resource-group "$RG" \
                 --system-topic-name "$TOPIC" \
                 --endpoint-type webhook \
-                --endpoint "$WEBHOOK_URL" \
+                --endpoint "${{ env.WEBHOOK_URL }}" \
                 --included-event-types Microsoft.Storage.BlobCreated \
                 --subject-begins-with "/blobServices/default/containers/invoices/"
             fi
