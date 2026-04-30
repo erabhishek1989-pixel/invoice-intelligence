@@ -75,12 +75,20 @@ jobs:
           app-name: app-invoiceai-prod-centralindia-001
           package: .
 
+      - name: Install function dependencies
+        run: |
+          pip install \
+            --target function_app/.python_packages/lib/site-packages \
+            -r function_app/requirements.txt
+
       - name: Deploy Function App
         uses: azure/functions-action@v1
         with:
           app-name: func-invoiceai-prod-centralindia-001
           package: function_app
-          scm-do-build-during-deployment: true
+          # No scm-do-build-during-deployment — packages are pre-installed above.
+          # Remote (Oryx) build causes a second restart after the first deploy restart,
+          # creating a race condition where Event Grid validation hits the app mid-restart.
 
       - name: Wait for function app webhook to respond
         uses: azure/cli@v2
