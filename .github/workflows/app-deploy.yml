@@ -75,6 +75,24 @@ jobs:
           app-name: app-invoiceai-prod-centralindia-001
           package: .
 
+      # ── Function App deployment ──────────────────────────────────────────────
+      # We use az CLI directly (OneDeployv2 API) instead of azure/functions-action
+      # because the action silently sets WEBSITE_RUN_FROM_PACKAGE=1, which makes
+      # the app run from a read-only zip mount and prevents .python_packages from
+      # being found on the module path.  With WEBSITE_RUN_FROM_PACKAGE=0 + zip
+      # deploy the files are extracted to /home/site/wwwroot and the worker can
+      # discover them normally.
+
+      - name: Ensure WEBSITE_RUN_FROM_PACKAGE is OFF
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az functionapp config appsettings set \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --name func-invoiceai-prod-centralindia-001 \
+              --settings WEBSITE_RUN_FROM_PACKAGE=0
+            echo "✓ WEBSITE_RUN_FROM_PACKAGE=0 confirmed"
+
       - name: Install function dependencies (Linux manylinux wheels)
         run: |
           pip install \
@@ -86,15 +104,54 @@ jobs:
             --target function_app/.python_packages/lib/site-packages \
             -r function_app/requirements.txt
 
-      - name: Deploy Function App
-        uses: azure/functions-action@v1
+      - name: Package Function App
+        run: |
+          cd function_app
+          zip -r ../function_app.zip . \
+            --exclude "*.pyc" \
+            --exclude "__pycache__/*" \
+            --exclude ".python_packages/lib/site-packages/*/__pycache__/*"
+          echo "=== Zip size ==="
+          ls -lh ../function_app.zip
+          echo "=== Top-level entries ==="
+          unzip -l ../function_app.zip | grep -v "/$" | awk '{print $4}' | cut -d/ -f1 | sort -u
+          echo "=== Key files present ==="
+          unzip -l ../function_app.zip | grep -E "function_app\.py|host\.json|requirements\.txt|\.python_packages"
+
+      - name: Deploy Function App (OneDeployv2)
+        uses: azure/cli@v2
         with:
-          app-name: func-invoiceai-prod-centralindia-001
-          package: function_app
-          scm-do-build-during-deployment: 'false'
-          # No Oryx remote build — packages pre-installed above as manylinux binary
-          # wheels (compatible with Azure's Linux x86_64 container).
-          # The .python_packages folder is included in the zip and used by the worker.
+          inlineScript: |
+            az functionapp deploy \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --name func-invoiceai-prod-centralindia-001 \
+              --src-path function_app.zip \
+              --type zip \
+              --async false
+            echo "✓ Deployment complete"
+
+      - name: Restart and verify function registration
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            echo "Restarting function app..."
+            az functionapp restart \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --name func-invoiceai-prod-centralindia-001
+            echo "Waiting 45s for Functions host to start and index..."
+            sleep 45
+            echo "=== Registered functions ==="
+            az functionapp function list \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --name func-invoiceai-prod-centralindia-001 \
+              --query "[].{name:name,language:language}" \
+              --output table \
+              || echo "WARNING: function list returned no results — check Application Insights logs"
+            echo "=== App settings (key names only) ==="
+            az functionapp config appsettings list \
+              --resource-group rg-invoiceai-prod-centralindia-001 \
+              --name func-invoiceai-prod-centralindia-001 \
+              --query "[].name" --output tsv
 
       # Event Grid subscription (Blob → Queue → Function) is managed by Terraform.
       # No webhook registration step needed here — queue delivery requires no validation handshake.
