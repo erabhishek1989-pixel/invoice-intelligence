@@ -75,20 +75,15 @@ jobs:
           app-name: app-invoiceai-prod-centralindia-001
           package: .
 
-      - name: Install function dependencies
-        run: |
-          pip install \
-            --target function_app/.python_packages/lib/site-packages \
-            -r function_app/requirements.txt
-
       - name: Deploy Function App
         uses: azure/functions-action@v1
         with:
           app-name: func-invoiceai-prod-centralindia-001
           package: function_app
-          # No scm-do-build-during-deployment — packages are pre-installed above.
-          # Remote (Oryx) build causes a second restart after the first deploy restart,
-          # creating a race condition where Event Grid validation hits the app mid-restart.
+          scm-do-build-during-deployment: 'true'
+          # Remote Oryx build installs packages (including pyodbc native libs) directly
+          # on the Azure Linux host — ensures binary compatibility.
+          # Queue delivery means no webhook validation race condition to worry about.
 
       # Event Grid subscription (Blob → Queue → Function) is managed by Terraform.
       # No webhook registration step needed here — queue delivery requires no validation handshake.
