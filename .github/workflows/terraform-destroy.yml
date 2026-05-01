@@ -5,7 +5,7 @@ name: Terraform Destroy
 # can properly purge soft-deleted Key Vault and Cognitive Services accounts.
 # This means next morning's apply has zero 409 conflicts.
 #
-# Schedule: 22:00 IST = 16:30 UTC, weekdays only.
+# Schedule: 01:00 IST = 19:30 UTC, every day.
 # Manual: Actions → Terraform Destroy → Run workflow → type "destroy".
 
 on:
@@ -15,7 +15,7 @@ on:
         description: 'Type "destroy" to confirm deletion of all Azure resources'
         required: true
   schedule:
-    - cron: "30 16 * * 1-5" # 22:00 IST Mon–Fri
+    - cron: "30 19 * * *" # 01:00 IST every day (IST = UTC+5:30)
 
 permissions:
   id-token: write
