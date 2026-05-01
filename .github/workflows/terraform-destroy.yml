@@ -1,11 +1,21 @@
 name: Terraform Destroy
 
+# Tears down all Azure resources to save cost at night.
+# Uses Terraform destroy (not portal deletion) so the azurerm provider
+# can properly purge soft-deleted Key Vault and Cognitive Services accounts.
+# This means next morning's apply has zero 409 conflicts.
+#
+# Schedule: 22:00 IST = 16:30 UTC, weekdays only.
+# Manual: Actions → Terraform Destroy → Run workflow → type "destroy".
+
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type "destroy" to confirm you want to delete all resources'
+        description: 'Type "destroy" to confirm deletion of all Azure resources'
         required: true
+  schedule:
+    - cron: "30 16 * * 1-5" # 22:00 IST Mon–Fri
 
 permissions:
   id-token: write
@@ -22,11 +32,13 @@ jobs:
   destroy:
     name: Terraform Destroy
     runs-on: ubuntu-latest
+
     steps:
-      - name: Check confirmation input
-        if: github.event.inputs.confirm != 'destroy'
+      - name: Validate manual confirmation
+        # Skip this check for scheduled runs (github.event_name == 'schedule')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'destroy'
         run: |
-          echo "You must type 'destroy' to confirm. Got: '${{ github.event.inputs.confirm }}'"
+          echo "ERROR: You must type 'destroy' to confirm. Got: '${{ github.event.inputs.confirm }}'"
           exit 1
 
       - name: Checkout
@@ -55,3 +67,12 @@ jobs:
             -input=false \
             -auto-approve \
             -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}"
+        # The provider's features block handles soft-delete purging on destroy:
+        #   key_vault.purge_soft_delete_on_destroy        = true
+        #   cognitive_account.purge_soft_delete_on_destroy = true
+        # So next morning's apply sees no soft-deleted resources.
+
+      - name: Done
+        run: |
+          echo "All Azure resources destroyed at $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo "Run the Terraform Deploy workflow tomorrow to recreate everything."

@@ -142,33 +142,6 @@ resource "azurerm_key_vault" "main" {
   tags = local.common_tags
 }
 
-# ─── Import blocks — secrets already exist in Azure from prior partial apply ──
-
-import {
-  to = azurerm_key_vault_secret.doc_intelligence_key
-  id = "https://kv-invoiceai-prod-001.vault.azure.net/secrets/doc-intelligence-key/7087c02ebcbc459fa9c8a9050cbe8183"
-}
-
-import {
-  to = azurerm_key_vault_secret.openai_api_key
-  id = "https://kv-invoiceai-prod-001.vault.azure.net/secrets/openai-api-key/9ba0aa12aaa44075a42592b5ec4a81a6"
-}
-
-import {
-  to = azurerm_key_vault_secret.secret_key
-  id = "https://kv-invoiceai-prod-001.vault.azure.net/secrets/flask-secret-key/5d0fdf927b1b4fd198a5677ce9d719c2"
-}
-
-import {
-  to = azurerm_key_vault_secret.database_url
-  id = "https://kv-invoiceai-prod-001.vault.azure.net/secrets/database-url/50feed4c228c45bea0e2518d04d6c776"
-}
-
-import {
-  to = azurerm_key_vault_secret.sql_admin_password
-  id = "https://kv-invoiceai-prod-001.vault.azure.net/secrets/sql-admin-password/876bbc7099b8404db1e693cc3a76e206"
-}
-
 resource "azurerm_key_vault_secret" "doc_intelligence_key" {
   name         = "doc-intelligence-key"
   value        = azurerm_cognitive_account.doc_intelligence.primary_access_key

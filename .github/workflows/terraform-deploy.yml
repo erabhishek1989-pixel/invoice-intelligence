@@ -134,24 +134,32 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init -input=false
 
-      - name: Purge soft-deleted Cognitive Services accounts
+      - name: Purge soft-deleted resources
         uses: azure/cli@v2
         with:
           inlineScript: |
-            # Azure soft-deletes Cognitive Services accounts (like Key Vault).
-            # Purge before apply so Terraform can recreate them cleanly.
-            # Each account has its own location — must match the original region.
+            # Azure soft-deletes Cognitive Services and Key Vault on resource group
+            # deletion. Attempt to purge each before apply — errors mean "not
+            # soft-deleted" which is fine. Each Cognitive account must be purged
+            # using its original region, not the resource group region.
             RG="rg-invoiceai-prod-centralindia-001"
-            purge() {
-              local NAME=$1 LOC=$2
-              echo "Attempting purge of soft-deleted account: ${NAME} (${LOC})"
-              az cognitiveservices account purge \
-                --location "$LOC" \
-                --resource-group "$RG" \
-                --name "$NAME" 2>&1 && echo "Purged: ${NAME}" || echo "Skipped (not soft-deleted): ${NAME}"
-            }
-            purge docintel-invoiceai-prod-001        centralindia
-            purge oai-invoiceai-prod-centralindia-001 eastus
+
+            echo "=== Purging soft-deleted Cognitive Services accounts ==="
+            az cognitiveservices account purge \
+              --location centralindia --resource-group "$RG" \
+              --name docintel-invoiceai-prod-001 \
+              && echo "docintel purged" || echo "docintel not soft-deleted — OK"
+
+            az cognitiveservices account purge \
+              --location eastus --resource-group "$RG" \
+              --name oai-invoiceai-prod-centralindia-001 \
+              && echo "openai purged" || echo "openai not soft-deleted — OK"
+
+            echo "=== Purging soft-deleted Key Vault ==="
+            az keyvault purge \
+              --location centralindia \
+              --name kv-invoiceai-prod-001 \
+              && echo "keyvault purged" || echo "keyvault not soft-deleted — OK"
 
       - name: Download plan artifact
         uses: actions/download-artifact@v4
