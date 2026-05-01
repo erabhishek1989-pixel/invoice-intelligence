@@ -139,23 +139,19 @@ jobs:
         with:
           inlineScript: |
             # Azure soft-deletes Cognitive Services accounts (like Key Vault).
-            # If any exist in soft-deleted state with the same name they block
-            # re-creation. Purge them before apply so Terraform can proceed.
+            # Purge before apply so Terraform can recreate them cleanly.
+            # Each account has its own location — must match the original region.
             RG="rg-invoiceai-prod-centralindia-001"
-            LOCATION="centralindia"
-            for ACCOUNT in docintel-invoiceai-prod-001 oai-invoiceai-prod-centralindia-001; do
-              DELETED=$(az cognitiveservices account list-deleted \
-                --query "[?name=='${ACCOUNT}'] | length(@)" -o tsv 2>/dev/null || echo "0")
-              if [ "${DELETED}" -gt "0" ] 2>/dev/null; then
-                echo "Purging soft-deleted Cognitive Services account: ${ACCOUNT}"
-                az cognitiveservices account purge \
-                  --location "$LOCATION" \
-                  --resource-group "$RG" \
-                  --name "$ACCOUNT" || true
-              else
-                echo "No soft-deleted account found for: ${ACCOUNT} — skipping"
-              fi
-            done
+            purge() {
+              local NAME=$1 LOC=$2
+              echo "Attempting purge of soft-deleted account: ${NAME} (${LOC})"
+              az cognitiveservices account purge \
+                --location "$LOC" \
+                --resource-group "$RG" \
+                --name "$NAME" 2>&1 && echo "Purged: ${NAME}" || echo "Skipped (not soft-deleted): ${NAME}"
+            }
+            purge docintel-invoiceai-prod-001        centralindia
+            purge oai-invoiceai-prod-centralindia-001 eastus
 
       - name: Download plan artifact
         uses: actions/download-artifact@v4
