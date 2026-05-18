@@ -64,17 +64,26 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     except Exception as exc:
         result["db"] = {"connected": False, "error": str(exc)[-200:]}
 
-    # 4. DNS — resolve SQL hostname so we know if private or public endpoint is used
+    # 4. DNS + TCP — resolve SQL hostname and test port 1433 reachability
     try:
         import socket
+        from sqlalchemy.engine import make_url as _make_url
         db_url = os.environ.get("DATABASE_URL", "")
-        # Extract hostname from mssql+pyodbc://user:pass@hostname/db?...
-        host = db_url.split("@")[1].split("/")[0] if "@" in db_url else "unknown"
+        parsed = _make_url(db_url)
+        host = parsed.host or "unknown"
+        # DNS resolution
         resolved = socket.getaddrinfo(host, 1433, proto=socket.IPPROTO_TCP)
         ips = list({r[4][0] for r in resolved})
         result["dns"] = {"host": host, "resolved_ips": ips}
+        # TCP reachability on port 1433
+        try:
+            sock = socket.create_connection((host, 1433), timeout=5)
+            sock.close()
+            result["tcp_1433"] = "reachable"
+        except Exception as tcp_exc:
+            result["tcp_1433"] = f"blocked: {tcp_exc}"
     except Exception as exc:
-        result["dns"] = {"error": str(exc)[-200:]}
+        result["dns"] = {"error": str(exc)[-300:]}
 
     return func.HttpResponse(
         json.dumps(result, indent=2),
