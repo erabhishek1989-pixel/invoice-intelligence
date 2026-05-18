@@ -466,10 +466,10 @@ resource "azurerm_linux_function_app" "main" {
     "AZURE_DOC_INTELLIGENCE_KEY"      = azurerm_cognitive_account.doc_intelligence.primary_access_key
     "DATABASE_URL"                    = "mssql+pyodbc://${var.sql_admin_login}:${var.sql_admin_password}@${azurerm_mssql_server.main.fully_qualified_domain_name}/${azurerm_mssql_database.main.name}?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no"
     "APPINSIGHTS_INSTRUMENTATIONKEY"  = azurerm_application_insights.main.instrumentation_key
-    "FUNCTIONS_WORKER_RUNTIME"    = "python"
-    "AzureWebJobsFeatureFlags"    = "EnableWorkerIndexing"
-    "FUNCTIONS_EXTENSION_VERSION" = "~4"
-    "WEBSITE_RUN_FROM_PACKAGE"    = "0"
+    "FUNCTIONS_WORKER_RUNTIME"        = "python"
+    "AzureWebJobsFeatureFlags"        = "EnableWorkerIndexing"
+    "FUNCTIONS_EXTENSION_VERSION"     = "~4"
+    "WEBSITE_RUN_FROM_PACKAGE"        = "0"
   }
 
   tags = local.common_tags
