@@ -227,6 +227,10 @@ resource "azurerm_subnet" "app_service" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.2.0/24"]
 
+  # Service endpoints let the subnet reach SQL directly via Azure backbone,
+  # independently of private endpoint DNS resolution.
+  service_endpoints = ["Microsoft.Sql", "Microsoft.Storage"]
+
   delegation {
     name = "app-service"
     service_delegation {
@@ -234,6 +238,16 @@ resource "azurerm_subnet" "app_service" {
       actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
     }
   }
+}
+
+# Allow the app_service subnet to connect to SQL via service endpoint.
+# This is a belt-and-suspenders fix: if private endpoint DNS doesn't resolve
+# correctly inside the Function container, traffic falls back to the public
+# SQL FQDN → service endpoint → this rule allows it through.
+resource "azurerm_mssql_virtual_network_rule" "app_service" {
+  name      = "vnet-rule-app-service"
+  server_id = azurerm_mssql_server.main.id
+  subnet_id = azurerm_subnet.app_service.id
 }
 
 # ─── Private DNS Zones ────────────────────────────────────────────────────────

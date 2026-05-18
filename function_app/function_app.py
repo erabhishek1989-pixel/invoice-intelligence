@@ -1,6 +1,9 @@
+import base64
 import json
 import logging
 import os
+import uuid
+from datetime import datetime, timezone
 
 import azure.functions as func
 
@@ -58,11 +61,85 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     except Exception as exc:
         result["db"] = {"connected": False, "error": str(exc)[-200:]}
 
+    # 4. DNS — resolve SQL hostname so we know if private or public endpoint is used
+    try:
+        import socket
+        db_url = os.environ.get("DATABASE_URL", "")
+        # Extract hostname from mssql+pyodbc://user:pass@hostname/db?...
+        host = db_url.split("@")[1].split("/")[0] if "@" in db_url else "unknown"
+        resolved = socket.getaddrinfo(host, 1433, proto=socket.IPPROTO_TCP)
+        ips = list({r[4][0] for r in resolved})
+        result["dns"] = {"host": host, "resolved_ips": ips}
+    except Exception as exc:
+        result["dns"] = {"error": str(exc)[-200:]}
+
     return func.HttpResponse(
         json.dumps(result, indent=2),
         mimetype="application/json",
         status_code=200,
     )
+
+
+@app.route(route="inject")
+def inject(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    DIAGNOSTIC: Manually push a BlobCreated event to the invoice-processing queue.
+    Bypasses Event Grid so you can test the queue trigger + processing pipeline directly.
+
+    Usage: GET /api/inject?blob_url=https://stinvoiceaiprod001.blob.core.windows.net/invoices/xxx.pdf
+    """
+    from azure.storage.queue import QueueServiceClient
+
+    blob_url = req.params.get("blob_url", "").strip()
+    if not blob_url:
+        return func.HttpResponse(
+            json.dumps({"error": "blob_url query parameter is required"}),
+            mimetype="application/json",
+            status_code=400,
+        )
+
+    # Construct an Event Grid BlobCreated event — same schema that process_invoice expects
+    event = {
+        "id": str(uuid.uuid4()),
+        "eventType": "Microsoft.Storage.BlobCreated",
+        "subject": "/blobServices/default/containers/invoices/blobs/injected",
+        "eventTime": datetime.now(timezone.utc).isoformat(),
+        "data": {
+            "api": "PutBlob",
+            "url": blob_url,
+            "blobType": "BlockBlob",
+            "contentType": "application/octet-stream",
+        },
+        "dataVersion": "",
+        "metadataVersion": "1",
+    }
+
+    try:
+        conn_str = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
+        qsc = QueueServiceClient.from_connection_string(conn_str)
+        qc = qsc.get_queue_client("invoice-processing")
+        # Send as plain JSON — the queue trigger reads msg.get_body() directly
+        qc.send_message(json.dumps(event))
+
+        return func.HttpResponse(
+            json.dumps(
+                {
+                    "status": "queued",
+                    "blob_url": blob_url,
+                    "message": "Event pushed to invoice-processing queue. Queue trigger fires within ~10 s.",
+                    "event_id": event["id"],
+                },
+                indent=2,
+            ),
+            mimetype="application/json",
+            status_code=200,
+        )
+    except Exception as exc:
+        return func.HttpResponse(
+            json.dumps({"error": str(exc)}),
+            mimetype="application/json",
+            status_code=500,
+        )
 
 
 @app.queue_trigger(
@@ -84,9 +161,14 @@ def process_invoice(msg: func.QueueMessage) -> None:
       6. Mark document as "processed" (or "failed" on error)
     """
     # ── 1. Parse queue message ────────────────────────────────────────────────
+    # Event Grid may base64-encode messages to Storage Queue (older behavior).
+    # The inject endpoint sends plain JSON.  Handle both formats gracefully.
     try:
-        body = msg.get_body().decode("utf-8")
-        event = json.loads(body)
+        raw = msg.get_body().decode("utf-8")
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            event = json.loads(base64.b64decode(raw).decode("utf-8"))
     except Exception as exc:
         logger.error("Cannot parse queue message body: %s", exc)
         return  # un-parseable message — drop it, don't retry
