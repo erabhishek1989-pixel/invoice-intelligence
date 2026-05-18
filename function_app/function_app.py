@@ -15,10 +15,15 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 @app.route(route="health")
 def health(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Diagnostic endpoint — confirms the Functions host is running and
-    which environment variables are present (keys only, never values).
+    Diagnostic endpoint — checks env vars, queue message count, and DB connectivity.
     GET https://func-invoiceai-prod-centralindia-001.azurewebsites.net/api/health
     """
+    import traceback
+    from azure.storage.queue import QueueServiceClient
+
+    result = {"status": "ok", "env": {}, "queue": {}, "db": {}}
+
+    # 1. Env vars
     required_keys = [
         "AZURE_STORAGE_CONNECTION_STRING",
         "AZURE_DOC_INTELLIGENCE_ENDPOINT",
@@ -27,9 +32,34 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
         "AzureWebJobsFeatureFlags",
         "WEBSITE_RUN_FROM_PACKAGE",
     ]
-    env_status = {k: ("✅ set" if os.environ.get(k) else "❌ MISSING") for k in required_keys}
+    result["env"] = {k: ("set" if os.environ.get(k) else "MISSING") for k in required_keys}
+
+    # 2. Queue — peek for messages
+    try:
+        conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+        qsc = QueueServiceClient.from_connection_string(conn_str)
+        qc = qsc.get_queue_client("invoice-processing")
+        props = qc.get_queue_properties()
+        msgs = list(qc.peek_messages(max_messages=5))
+        result["queue"] = {
+            "approximate_count": props.approximate_message_count,
+            "peeked_messages": len(msgs),
+            "sample": [m.content[:120] if m.content else "" for m in msgs],
+        }
+    except Exception as exc:
+        result["queue"] = {"error": str(exc), "trace": traceback.format_exc()[-300:]}
+
+    # 3. DB — quick connectivity check
+    try:
+        from db_writer import _engine
+        with _engine().connect() as conn:
+            conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+        result["db"] = {"connected": True}
+    except Exception as exc:
+        result["db"] = {"connected": False, "error": str(exc)[-200:]}
+
     return func.HttpResponse(
-        json.dumps({"status": "ok", "env": env_status}, indent=2),
+        json.dumps(result, indent=2),
         mimetype="application/json",
         status_code=200,
     )
