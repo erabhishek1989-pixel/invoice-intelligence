@@ -52,11 +52,14 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     except Exception as exc:
         result["queue"] = {"error": str(exc), "trace": traceback.format_exc()[-300:]}
 
-    # 3. DB — quick connectivity check
+    # 3. DB — quick connectivity check (5 s timeout so health responds fast)
     try:
-        from db_writer import _engine
-        with _engine().connect() as conn:
-            conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.pool import NullPool
+        url = os.environ["DATABASE_URL"]
+        eng = create_engine(url, poolclass=NullPool, connect_args={"timeout": 5})
+        with eng.connect() as conn:
+            conn.execute(text("SELECT 1"))
         result["db"] = {"connected": True}
     except Exception as exc:
         result["db"] = {"connected": False, "error": str(exc)[-200:]}

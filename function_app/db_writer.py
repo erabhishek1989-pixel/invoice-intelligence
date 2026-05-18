@@ -19,9 +19,7 @@ logger = logging.getLogger(__name__)
 def _engine():
     """Create a fresh engine. NullPool avoids connection leaks between invocations."""
     url = os.environ["DATABASE_URL"]
-    # Extend the ODBC connection timeout to 60 s so the first cold connection
-    # through the VNet private endpoint has enough time to establish.
-    return create_engine(url, poolclass=NullPool, connect_args={"timeout": 60})
+    return create_engine(url, poolclass=NullPool, connect_args={"timeout": 15})
 
 
 @contextmanager

@@ -157,7 +157,7 @@ jobs:
           echo "Polling $HEALTH_URL (up to 3 minutes)..."
           for i in $(seq 1 18); do
             sleep 10
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" || echo "000")
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$HEALTH_URL" || echo "000")
             echo "Attempt $i: HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "=== Health response ==="
