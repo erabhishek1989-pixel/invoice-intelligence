@@ -252,11 +252,7 @@ resource "azurerm_mssql_virtual_network_rule" "app_service" {
 
 # ─── Private DNS Zones ────────────────────────────────────────────────────────
 
-resource "azurerm_private_dns_zone" "sql" {
-  name                = "privatelink.database.windows.net"
-  resource_group_name = azurerm_resource_group.main.name
-  tags                = local.common_tags
-}
+# SQL private DNS zone removed — public endpoint + VNet rule used instead
 
 resource "azurerm_private_dns_zone" "blob" {
   name                = "privatelink.blob.core.windows.net"
@@ -270,14 +266,6 @@ resource "azurerm_private_dns_zone" "keyvault" {
   tags                = local.common_tags
 }
 
-resource "azurerm_private_dns_zone_virtual_network_link" "sql" {
-  name                  = "pdnslink-sql"
-  resource_group_name   = azurerm_resource_group.main.name
-  private_dns_zone_name = azurerm_private_dns_zone.sql.name
-  virtual_network_id    = azurerm_virtual_network.main.id
-  registration_enabled  = false
-  tags                  = local.common_tags
-}
 
 resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
   name                  = "pdnslink-blob"
@@ -299,25 +287,8 @@ resource "azurerm_private_dns_zone_virtual_network_link" "keyvault" {
 
 # ─── Private Endpoints ────────────────────────────────────────────────────────
 
-resource "azurerm_private_endpoint" "sql" {
-  name                = "pe-sql-${local.suffix}-001"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = azurerm_subnet.private_endpoints.id
-  tags                = local.common_tags
-
-  private_service_connection {
-    name                           = "psc-sql"
-    private_connection_resource_id = azurerm_mssql_server.main.id
-    subresource_names              = ["sqlServer"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "sql-dns-group"
-    private_dns_zone_ids = [azurerm_private_dns_zone.sql.id]
-  }
-}
+# SQL private endpoint removed — public endpoint + VNet service endpoint rule used instead.
+# The azurerm_mssql_virtual_network_rule below allows the app_service subnet direct access.
 
 resource "azurerm_private_endpoint" "blob" {
   name                = "pe-blob-${local.suffix}-001"
