@@ -485,6 +485,7 @@ resource "azurerm_linux_function_app" "main" {
     "FUNCTIONS_EXTENSION_VERSION"     = "~4"
     "WEBSITE_RUN_FROM_PACKAGE"        = "0"
     "WEBSITE_DNS_SERVER"              = "168.63.129.16"
+    "WEBSITE_VNET_ROUTE_ALL"          = "1"
   }
 
   tags = local.common_tags
