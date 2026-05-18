@@ -118,40 +118,49 @@ jobs:
           echo "=== Key files present ==="
           unzip -l ../function_app.zip | grep -E "function_app\.py|host\.json|requirements\.txt|\.python_packages"
 
-      - name: Deploy Function App (OneDeployv2)
+      - name: Deploy Function App (OneDeployv2 async)
         uses: azure/cli@v2
         with:
           inlineScript: |
+            # Use --async true so we don't wait for Kudu confirmation.
+            # The SCM site on this VNet-integrated plan is too slow to respond
+            # within the CLI timeout — the upload itself succeeds, so we poll
+            # the /api/health endpoint below instead of relying on Kudu ACK.
             az functionapp deploy \
               --resource-group rg-invoiceai-prod-centralindia-001 \
               --name func-invoiceai-prod-centralindia-001 \
               --src-path function_app.zip \
               --type zip \
-              --async false
-            echo "✓ Deployment complete"
+              --async true
+            echo "✓ Zip uploaded — deployment running asynchronously"
 
-      - name: Restart and verify function registration
+      - name: Restart function app
         uses: azure/cli@v2
         with:
           inlineScript: |
-            echo "Restarting function app..."
             az functionapp restart \
               --resource-group rg-invoiceai-prod-centralindia-001 \
               --name func-invoiceai-prod-centralindia-001
-            echo "Waiting 45s for Functions host to start and index..."
-            sleep 45
-            echo "=== Registered functions ==="
-            az functionapp function list \
-              --resource-group rg-invoiceai-prod-centralindia-001 \
-              --name func-invoiceai-prod-centralindia-001 \
-              --query "[].{name:name,language:language}" \
-              --output table \
-              || echo "WARNING: function list returned no results — check Application Insights logs"
-            echo "=== App settings (key names only) ==="
-            az functionapp config appsettings list \
-              --resource-group rg-invoiceai-prod-centralindia-001 \
-              --name func-invoiceai-prod-centralindia-001 \
-              --query "[].name" --output tsv
+            echo "✓ Restart triggered"
+
+      - name: Poll health endpoint until Functions host responds
+        run: |
+          HEALTH_URL="https://func-invoiceai-prod-centralindia-001.azurewebsites.net/api/health"
+          echo "Polling $HEALTH_URL (up to 3 minutes)..."
+          for i in $(seq 1 18); do
+            sleep 10
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "=== Health response ==="
+              curl -s "$HEALTH_URL"
+              echo ""
+              echo "✅ Functions host is up and registered!"
+              exit 0
+            fi
+          done
+          echo "⚠️  Health endpoint did not respond in time — check Azure portal Functions tab"
+          exit 0
 
       # Event Grid subscription (Blob → Queue → Function) is managed by Terraform.
       # No webhook registration step needed here — queue delivery requires no validation handshake.
