@@ -468,6 +468,10 @@ resource "azurerm_linux_function_app" "main" {
     "APPINSIGHTS_INSTRUMENTATIONKEY"  = azurerm_application_insights.main.instrumentation_key
     "FUNCTIONS_WORKER_RUNTIME"        = "python"
     "AzureWebJobsFeatureFlags"        = "EnableWorkerIndexing"
+    # Required: pin to v4 runtime explicitly so Terraform never strips it
+    "FUNCTIONS_EXTENSION_VERSION"     = "~4"
+    # Must be 0 — "1" mounts a read-only zip so .python_packages can't be found
+    "WEBSITE_RUN_FROM_PACKAGE"        = "0"
   }
 
   tags = local.common_tags

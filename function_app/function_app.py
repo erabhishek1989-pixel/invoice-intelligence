@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 import azure.functions as func
 
@@ -8,7 +9,30 @@ from processor import process_invoice_document
 
 logger = logging.getLogger(__name__)
 
-app = func.FunctionApp()
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+
+@app.route(route="health")
+def health(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Diagnostic endpoint — confirms the Functions host is running and
+    which environment variables are present (keys only, never values).
+    GET https://func-invoiceai-prod-centralindia-001.azurewebsites.net/api/health
+    """
+    required_keys = [
+        "AZURE_STORAGE_CONNECTION_STRING",
+        "AZURE_DOC_INTELLIGENCE_ENDPOINT",
+        "DATABASE_URL",
+        "FUNCTIONS_WORKER_RUNTIME",
+        "AzureWebJobsFeatureFlags",
+        "WEBSITE_RUN_FROM_PACKAGE",
+    ]
+    env_status = {k: ("✅ set" if os.environ.get(k) else "❌ MISSING") for k in required_keys}
+    return func.HttpResponse(
+        json.dumps({"status": "ok", "env": env_status}, indent=2),
+        mimetype="application/json",
+        status_code=200,
+    )
 
 
 @app.queue_trigger(
