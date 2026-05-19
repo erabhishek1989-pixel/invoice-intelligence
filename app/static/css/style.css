@@ -227,17 +227,18 @@ body {
 .upload-card { padding: 0; }
 
 .upload-area {
-  padding: 2.5rem;
+  padding: 3.5rem 2.5rem;
   text-align: center;
-  border: 2px dashed var(--border-strong);
+  border: 2px dashed rgba(255,255,255,0.25);
   border-radius: var(--radius);
+  background: #1e1e1e;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
 }
 
 .upload-area:hover, .upload-area.drag-over {
   border-color: var(--accent);
-  background: rgba(99,102,241,0.05);
+  background: #252535;
 }
 
 .upload-icon {

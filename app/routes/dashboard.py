@@ -73,11 +73,12 @@ def upload():
 
     doc = None
     try:
-        blob_url = upload_to_blob(file)
+        blob_url, blob_name = upload_to_blob(file)
 
         doc = Document(
             filename=os.path.basename(file.filename),
             blob_url=blob_url,
+            blob_name=blob_name,
             status="pending",
             uploaded_by=DEMO_USER_ID,
         )

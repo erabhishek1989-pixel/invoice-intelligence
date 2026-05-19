@@ -23,6 +23,10 @@ def process_document(doc: Document) -> Invoice:
     Run Document Intelligence on the blob, save results to DB.
     Updates doc.status and returns the saved Invoice.
     Raises on failure (caller should catch and mark doc as failed).
+
+    Streams the file bytes directly to Document Intelligence rather than
+    passing the blob URL — the storage container is private so the URL
+    is not publicly accessible and would return InvalidContent.
     """
     endpoint = current_app.config["AZURE_DOC_INTELLIGENCE_ENDPOINT"]
     key = current_app.config["AZURE_DOC_INTELLIGENCE_KEY"]
@@ -33,8 +37,13 @@ def process_document(doc: Document) -> Invoice:
     doc.status = "processing"
     db.session.commit()
 
+    # Download bytes from private blob and stream to Document Intelligence
+    from app.services.blob_service import download_blob_bytes
+    import io
+    file_bytes = download_blob_bytes(doc.blob_name)
+
     client = DocumentAnalysisClient(endpoint, AzureKeyCredential(key))
-    poller = client.begin_analyze_document_from_url("prebuilt-invoice", doc.blob_url)
+    poller = client.begin_analyze_document("prebuilt-invoice", io.BytesIO(file_bytes))
     result = poller.result()
 
     extracted = _extract_fields(result)

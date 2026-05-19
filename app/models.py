@@ -26,6 +26,7 @@ class Document(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
     blob_url = db.Column(db.String(500), nullable=False)
+    blob_name = db.Column(db.String(500))   # used to stream bytes to Doc Intelligence
     status = db.Column(db.String(20), default="pending")
     doc_type = db.Column(db.String(50))
     uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
