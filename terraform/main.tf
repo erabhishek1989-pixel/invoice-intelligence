@@ -112,6 +112,7 @@ resource "azurerm_mssql_database" "main" {
   tags      = local.common_tags
 }
 
+# Allow Azure datacenter IPs to reach SQL (covers App Service + Function App outbound IPs)
 resource "azurerm_mssql_firewall_rule" "azure_services" {
   name             = "AllowAzureServices"
   server_id        = azurerm_mssql_server.main.id
@@ -210,25 +211,15 @@ resource "azurerm_virtual_network" "main" {
   tags                = local.common_tags
 }
 
-# Subnet for private endpoints (SQL, Storage, Key Vault)
-resource "azurerm_subnet" "private_endpoints" {
-  name                 = "snet-pe-${local.suffix}"
-  resource_group_name  = azurerm_resource_group.main.name
-  virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.0.1.0/24"]
-
-  private_endpoint_network_policies = "Disabled"
-}
-
-# Subnet for App Service VNet integration (outbound)
+# Subnet for App Service VNet integration (outbound).
+# Service endpoints let the subnet reach SQL and Storage via Azure backbone
+# without needing private endpoints or custom DNS.
 resource "azurerm_subnet" "app_service" {
   name                 = "snet-app-${local.suffix}"
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.2.0/24"]
 
-  # Service endpoints let the subnet reach SQL directly via Azure backbone,
-  # independently of private endpoint DNS resolution.
   service_endpoints = ["Microsoft.Sql", "Microsoft.Storage"]
 
   delegation {
@@ -241,93 +232,10 @@ resource "azurerm_subnet" "app_service" {
 }
 
 # Allow the app_service subnet to connect to SQL via service endpoint.
-# This is a belt-and-suspenders fix: if private endpoint DNS doesn't resolve
-# correctly inside the Function container, traffic falls back to the public
-# SQL FQDN → service endpoint → this rule allows it through.
 resource "azurerm_mssql_virtual_network_rule" "app_service" {
   name      = "vnet-rule-app-service"
   server_id = azurerm_mssql_server.main.id
   subnet_id = azurerm_subnet.app_service.id
-}
-
-# ─── Private DNS Zones ────────────────────────────────────────────────────────
-
-# SQL private DNS zone removed — public endpoint + VNet rule used instead
-
-resource "azurerm_private_dns_zone" "blob" {
-  name                = "privatelink.blob.core.windows.net"
-  resource_group_name = azurerm_resource_group.main.name
-  tags                = local.common_tags
-}
-
-resource "azurerm_private_dns_zone" "keyvault" {
-  name                = "privatelink.vaultcore.azure.net"
-  resource_group_name = azurerm_resource_group.main.name
-  tags                = local.common_tags
-}
-
-
-resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
-  name                  = "pdnslink-blob"
-  resource_group_name   = azurerm_resource_group.main.name
-  private_dns_zone_name = azurerm_private_dns_zone.blob.name
-  virtual_network_id    = azurerm_virtual_network.main.id
-  registration_enabled  = false
-  tags                  = local.common_tags
-}
-
-resource "azurerm_private_dns_zone_virtual_network_link" "keyvault" {
-  name                  = "pdnslink-kv"
-  resource_group_name   = azurerm_resource_group.main.name
-  private_dns_zone_name = azurerm_private_dns_zone.keyvault.name
-  virtual_network_id    = azurerm_virtual_network.main.id
-  registration_enabled  = false
-  tags                  = local.common_tags
-}
-
-# ─── Private Endpoints ────────────────────────────────────────────────────────
-
-# SQL private endpoint removed — public endpoint + VNet service endpoint rule used instead.
-# The azurerm_mssql_virtual_network_rule below allows the app_service subnet direct access.
-
-resource "azurerm_private_endpoint" "blob" {
-  name                = "pe-blob-${local.suffix}-001"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = azurerm_subnet.private_endpoints.id
-  tags                = local.common_tags
-
-  private_service_connection {
-    name                           = "psc-blob"
-    private_connection_resource_id = azurerm_storage_account.main.id
-    subresource_names              = ["blob"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "blob-dns-group"
-    private_dns_zone_ids = [azurerm_private_dns_zone.blob.id]
-  }
-}
-
-resource "azurerm_private_endpoint" "keyvault" {
-  name                = "pe-kv-${local.suffix}-001"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = azurerm_subnet.private_endpoints.id
-  tags                = local.common_tags
-
-  private_service_connection {
-    name                           = "psc-kv"
-    private_connection_resource_id = azurerm_key_vault.main.id
-    subresource_names              = ["vault"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "kv-dns-group"
-    private_dns_zone_ids = [azurerm_private_dns_zone.keyvault.id]
-  }
 }
 
 # ─── App Service Plan ────────────────────────────────────────────────────────
@@ -499,129 +407,4 @@ resource "azurerm_eventgrid_system_topic_event_subscription" "blob_trigger" {
   }
 
   depends_on = [azurerm_storage_queue.invoice_processing]
-}
-
-# ─── East US VNet for OpenAI Private Endpoint ────────────────────────────────
-
-resource "azurerm_virtual_network" "eastus" {
-  name                = "vnet-${var.project}-prod-eastus-001"
-  location            = "eastus"
-  resource_group_name = azurerm_resource_group.main.name
-  address_space       = ["10.1.0.0/16"]
-  tags                = local.common_tags
-}
-
-resource "azurerm_subnet" "eastus_private_endpoints" {
-  name                 = "snet-pe-prod-eastus"
-  resource_group_name  = azurerm_resource_group.main.name
-  virtual_network_name = azurerm_virtual_network.eastus.name
-  address_prefixes     = ["10.1.1.0/24"]
-
-  private_endpoint_network_policies = "Disabled"
-}
-
-# ─── VNet Peering: Central India ↔ East US ───────────────────────────────────
-
-resource "azurerm_virtual_network_peering" "centralindia_to_eastus" {
-  name                         = "peer-centralindia-to-eastus"
-  resource_group_name          = azurerm_resource_group.main.name
-  virtual_network_name         = azurerm_virtual_network.main.name
-  remote_virtual_network_id    = azurerm_virtual_network.eastus.id
-  allow_virtual_network_access = true
-  allow_forwarded_traffic      = true
-}
-
-resource "azurerm_virtual_network_peering" "eastus_to_centralindia" {
-  name                         = "peer-eastus-to-centralindia"
-  resource_group_name          = azurerm_resource_group.main.name
-  virtual_network_name         = azurerm_virtual_network.eastus.name
-  remote_virtual_network_id    = azurerm_virtual_network.main.id
-  allow_virtual_network_access = true
-  allow_forwarded_traffic      = true
-}
-
-# ─── Private DNS Zones: OpenAI + Cognitive Services ──────────────────────────
-
-resource "azurerm_private_dns_zone" "openai" {
-  name                = "privatelink.openai.azure.com"
-  resource_group_name = azurerm_resource_group.main.name
-  tags                = local.common_tags
-}
-
-resource "azurerm_private_dns_zone" "cognitiveservices" {
-  name                = "privatelink.cognitiveservices.azure.com"
-  resource_group_name = azurerm_resource_group.main.name
-  tags                = local.common_tags
-}
-
-# Link OpenAI DNS zone to both VNets so both regions can resolve it
-resource "azurerm_private_dns_zone_virtual_network_link" "openai_centralindia" {
-  name                  = "pdnslink-openai-centralindia"
-  resource_group_name   = azurerm_resource_group.main.name
-  private_dns_zone_name = azurerm_private_dns_zone.openai.name
-  virtual_network_id    = azurerm_virtual_network.main.id
-  registration_enabled  = false
-  tags                  = local.common_tags
-}
-
-resource "azurerm_private_dns_zone_virtual_network_link" "openai_eastus" {
-  name                  = "pdnslink-openai-eastus"
-  resource_group_name   = azurerm_resource_group.main.name
-  private_dns_zone_name = azurerm_private_dns_zone.openai.name
-  virtual_network_id    = azurerm_virtual_network.eastus.id
-  registration_enabled  = false
-  tags                  = local.common_tags
-}
-
-resource "azurerm_private_dns_zone_virtual_network_link" "cognitiveservices" {
-  name                  = "pdnslink-cognitiveservices"
-  resource_group_name   = azurerm_resource_group.main.name
-  private_dns_zone_name = azurerm_private_dns_zone.cognitiveservices.name
-  virtual_network_id    = azurerm_virtual_network.main.id
-  registration_enabled  = false
-  tags                  = local.common_tags
-}
-
-# ─── Private Endpoint: Azure OpenAI (East US) ────────────────────────────────
-
-resource "azurerm_private_endpoint" "openai" {
-  name                = "pe-oai-prod-eastus-001"
-  location            = "eastus"
-  resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = azurerm_subnet.eastus_private_endpoints.id
-  tags                = local.common_tags
-
-  private_service_connection {
-    name                           = "psc-oai"
-    private_connection_resource_id = azurerm_cognitive_account.openai.id
-    subresource_names              = ["account"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "oai-dns-group"
-    private_dns_zone_ids = [azurerm_private_dns_zone.openai.id]
-  }
-}
-
-# ─── Private Endpoint: Document Intelligence (Central India) ─────────────────
-
-resource "azurerm_private_endpoint" "doc_intelligence" {
-  name                = "pe-docintel-${local.suffix}-001"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = azurerm_subnet.private_endpoints.id
-  tags                = local.common_tags
-
-  private_service_connection {
-    name                           = "psc-docintel"
-    private_connection_resource_id = azurerm_cognitive_account.doc_intelligence.id
-    subresource_names              = ["account"]
-    is_manual_connection           = false
-  }
-
-  private_dns_zone_group {
-    name                 = "docintel-dns-group"
-    private_dns_zone_ids = [azurerm_private_dns_zone.cognitiveservices.id]
-  }
 }
