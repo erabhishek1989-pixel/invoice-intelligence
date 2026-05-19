@@ -24,27 +24,43 @@ def query():
 
     try:
         sql = generate_sql(question)
+        sql_used = None
 
-        if sql == "CANNOT_ANSWER":
-            answer = "I can't answer that from the invoice data."
-            sql_used = None
+        if "CANNOT_ANSWER" in sql.upper():
+            answer = "I can't answer that from the invoice data. Try asking about vendors, amounts, dates or payment status."
         else:
-            results = run_query(sql)
-            answer = generate_answer(question, results)
+            try:
+                results = run_query(sql)
+            except ValueError as ve:
+                # Bad SQL from GPT — surface cleanly, don't crash
+                current_app.logger.warning("GPT produced invalid SQL: %s | %s", sql, ve)
+                answer = "I couldn't generate a valid query for that question. Try rephrasing it."
+                sql_used = sql
+                return jsonify({"answer": answer, "sql": sql_used})
+
+            if not results:
+                answer = "No matching records found."
+            else:
+                answer = generate_answer(question, results)
             sql_used = sql
 
-        log = QueryLog(
-            user_id=DEMO_USER_ID,
-            question=question,
-            sql_generated=sql_used,
-            answer=answer,
-            was_voice=was_voice,
-        )
-        db.session.add(log)
-        db.session.commit()
+        # Log every query (best-effort — don't crash the response if this fails)
+        try:
+            log = QueryLog(
+                user_id=DEMO_USER_ID,
+                question=question,
+                sql_generated=sql_used,
+                answer=answer,
+                was_voice=was_voice,
+            )
+            db.session.add(log)
+            db.session.commit()
+        except Exception as log_exc:
+            current_app.logger.warning("Failed to log query: %s", log_exc)
+            db.session.rollback()
 
         return jsonify({"answer": answer, "sql": sql_used})
 
     except Exception as exc:
-        current_app.logger.error("Query failed: %s", exc)
-        return jsonify({"error": "Something went wrong. Please try again."}), 500
+        current_app.logger.error("Query pipeline failed: %s", exc, exc_info=True)
+        return jsonify({"error": f"Something went wrong: {str(exc)[:120]}"}), 500
