@@ -201,6 +201,34 @@ resource "azurerm_cognitive_account" "openai" {
 # Create the gpt-4o deployment manually in Azure Portal once quota is approved:
 # Azure OpenAI Studio → Deployments → Deploy model → gpt-4o
 
+# ─── Virtual Network ─────────────────────────────────────────────────────────
+# Kept to avoid deletion-ordering issues (subnet has an App Service association
+# link that Azure removes asynchronously after VNet integration is detached).
+# The apps no longer use VNet integration — these resources are idle and harmless.
+
+resource "azurerm_virtual_network" "main" {
+  name                = "vnet-${var.project}-${local.suffix}-001"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  address_space       = ["10.0.0.0/16"]
+  tags                = local.common_tags
+}
+
+resource "azurerm_subnet" "app_service" {
+  name                 = "snet-app-${local.suffix}"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = ["10.0.2.0/24"]
+
+  delegation {
+    name = "app-service"
+    service_delegation {
+      name    = "Microsoft.Web/serverFarms"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
+    }
+  }
+}
+
 # ─── App Service Plan ────────────────────────────────────────────────────────
 
 resource "azurerm_service_plan" "main" {
