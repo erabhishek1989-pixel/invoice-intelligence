@@ -25,10 +25,12 @@ def create_app():
     from app.routes.auth import auth_bp
     from app.routes.dashboard import dashboard_bp
     from app.routes.chat import chat_bp
+    from app.routes.health import health_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(chat_bp)
+    app.register_blueprint(health_bp)
 
     from app import models  # noqa: F401 — ensure models are registered before create_all
     with app.app_context():
