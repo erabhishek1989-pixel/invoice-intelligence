@@ -4,13 +4,13 @@ import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from flask_login import LoginManager
 
 logger = logging.getLogger(__name__)
 
 db = SQLAlchemy()
 migrate = Migrate()
-login_manager = LoginManager()
+
+DEMO_USER_ID = 1  # all uploads/queries use this user — no auth for demo
 
 
 def create_app():
@@ -19,44 +19,33 @@ def create_app():
 
     db.init_app(app)
     migrate.init_app(app, db)
-    login_manager.init_app(app)
-    login_manager.login_view = "auth.login"
 
-    from app.routes.auth import auth_bp
     from app.routes.dashboard import dashboard_bp
     from app.routes.chat import chat_bp
     from app.routes.health import health_bp
 
-    app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(health_bp)
 
-    from app import models  # noqa: F401 — ensure models are registered before create_all
+    from app import models  # noqa: ensure models registered
     with app.app_context():
         try:
             db.create_all()
-            _create_admin_if_configured()
+            _ensure_demo_user()
         except Exception as e:
             logger.warning("Startup DB init skipped: %s", e)
 
     return app
 
 
-def _create_admin_if_configured():
-    """Create admin user from env vars ADMIN_USERNAME / ADMIN_PASSWORD if set."""
-    import os
+def _ensure_demo_user():
+    """Create a demo user (id=1) used for all uploads in no-auth mode."""
     from app.models import User
-
-    username = os.environ.get("ADMIN_USERNAME")
-    password = os.environ.get("ADMIN_PASSWORD")
-    if not username or not password:
-        return
-    existing = User.query.filter_by(username=username).first()
-    if existing:
-        existing.set_password(password)
-    else:
-        u = User(username=username, role="admin")
-        u.set_password(password)
+    existing = User.query.get(DEMO_USER_ID)
+    if not existing:
+        u = User(username="demo", role="admin")
+        u.set_password("demo")
         db.session.add(u)
-    db.session.commit()
+        db.session.commit()
+        logger.info("Demo user created (id=1)")

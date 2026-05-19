@@ -57,31 +57,47 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
         from sqlalchemy import create_engine, text
         from sqlalchemy.pool import NullPool
         url = os.environ["DATABASE_URL"]
-        eng = create_engine(url, poolclass=NullPool, connect_args={"timeout": 5})
+        eng = create_engine(url, poolclass=NullPool, connect_args={"timeout": 30})
         with eng.connect() as conn:
             conn.execute(text("SELECT 1"))
         result["db"] = {"connected": True}
     except Exception as exc:
         result["db"] = {"connected": False, "error": str(exc)[-200:]}
 
-    # 4. DNS + TCP — resolve SQL hostname and test port 1433 reachability
+    # 4. DNS + TCP diagnostics
     try:
         import socket
+        import subprocess
         from sqlalchemy.engine import make_url as _make_url
         db_url = os.environ.get("DATABASE_URL", "")
         parsed = _make_url(db_url)
         host = parsed.host or "unknown"
-        # DNS resolution
-        resolved = socket.getaddrinfo(host, 1433, proto=socket.IPPROTO_TCP)
-        ips = list({r[4][0] for r in resolved})
-        result["dns"] = {"host": host, "resolved_ips": ips}
-        # TCP reachability on port 1433
+        result["sql_host"] = host  # show the actual hostname being used
+
+        # DNS via Python socket
         try:
-            sock = socket.create_connection((host, 1433), timeout=5)
+            resolved = socket.getaddrinfo(host, 1433, proto=socket.IPPROTO_TCP)
+            ips = list({r[4][0] for r in resolved})
+            result["dns"] = {"host": host, "resolved_ips": ips}
+        except Exception as dns_exc:
+            result["dns"] = {"host": host, "error": str(dns_exc)}
+
+        # DNS via nslookup (uses system resolver, different from Python)
+        try:
+            out = subprocess.check_output(["nslookup", host], timeout=5, stderr=subprocess.STDOUT).decode()
+            result["nslookup"] = out[-300:]
+        except Exception as ns_exc:
+            result["nslookup"] = str(ns_exc)[-200:]
+
+        # TCP port 1433 (use IP if we have one, else hostname)
+        connect_target = ips[0] if "ips" in dir() and ips else host
+        try:
+            sock = socket.create_connection((connect_target, 1433), timeout=10)
             sock.close()
-            result["tcp_1433"] = "reachable"
+            result["tcp_1433"] = f"reachable ({connect_target})"
         except Exception as tcp_exc:
-            result["tcp_1433"] = f"blocked: {tcp_exc}"
+            result["tcp_1433"] = f"blocked ({connect_target}): {tcp_exc}"
+
     except Exception as exc:
         result["dns"] = {"error": str(exc)[-300:]}
 

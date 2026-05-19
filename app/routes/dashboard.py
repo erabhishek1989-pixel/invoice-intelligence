@@ -1,8 +1,16 @@
 import os
-from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
-from flask_login import login_required, current_user
-from app.models import Document, db
+import logging
+from datetime import datetime
+
+from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify, current_app
+from sqlalchemy import func
+
+from app import db, DEMO_USER_ID
+from app.models import Document, Invoice
 from app.services.blob_service import upload_to_blob
+from app.services.invoice_service import process_document
+
+logger = logging.getLogger(__name__)
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -15,19 +23,36 @@ def _allowed_file(filename: str) -> bool:
 
 
 @dashboard_bp.route("/")
-@login_required
 def index():
     docs = (
         Document.query
-        .filter_by(uploaded_by=current_user.id)
         .order_by(Document.uploaded_at.desc())
+        .limit(50)
         .all()
     )
-    return render_template("dashboard.html", documents=docs)
+
+    # Stats
+    total = Document.query.count()
+    processed = Document.query.filter_by(status="processed").count()
+    failed = Document.query.filter_by(status="failed").count()
+    pending = total - processed - failed
+
+    total_spend = db.session.query(func.sum(Invoice.total_amount)).scalar() or 0
+
+    return render_template(
+        "dashboard.html",
+        documents=docs,
+        stats={
+            "total": total,
+            "processed": processed,
+            "pending": pending,
+            "failed": failed,
+            "total_spend": float(total_spend),
+        },
+    )
 
 
 @dashboard_bp.route("/upload", methods=["POST"])
-@login_required
 def upload():
     file = request.files.get("file")
 
@@ -39,14 +64,14 @@ def upload():
         flash("Only PDF, JPG, JPEG and PNG files are allowed.", "danger")
         return redirect(url_for("dashboard.index"))
 
-    # Check file size without reading the whole stream into memory
-    file.stream.seek(0, 2)          # seek to end
+    file.stream.seek(0, 2)
     size = file.stream.tell()
-    file.stream.seek(0)             # rewind
+    file.stream.seek(0)
     if size > MAX_FILE_BYTES:
         flash("File is too large. Maximum size is 10 MB.", "danger")
         return redirect(url_for("dashboard.index"))
 
+    doc = None
     try:
         blob_url = upload_to_blob(file)
 
@@ -54,24 +79,43 @@ def upload():
             filename=os.path.basename(file.filename),
             blob_url=blob_url,
             status="pending",
-            uploaded_by=current_user.id,
+            uploaded_by=DEMO_USER_ID,
         )
         db.session.add(doc)
         db.session.commit()
 
-        flash("File uploaded — extraction is running in the background.", "success")
+        # Process synchronously — takes 5-15 seconds
+        invoice = process_document(doc)
+        flash(
+            f"✓ Invoice processed — {invoice.vendor_name or 'Unknown vendor'} | "
+            f"{invoice.currency} {invoice.total_amount or '?'}",
+            "success"
+        )
+        return redirect(url_for("dashboard.document", doc_id=doc.id))
 
     except Exception as exc:
-        current_app.logger.error("Upload failed: %s", exc)
-        db.session.rollback()
-        flash("Upload failed. Please try again.", "danger")
+        logger.error("Upload/processing failed: %s", exc)
+        if doc and doc.id:
+            doc.status = "failed"
+            doc.error_message = str(exc)[:500]
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        flash(f"Processing failed: {str(exc)[:200]}", "danger")
+        return redirect(url_for("dashboard.index"))
 
+
+@dashboard_bp.route("/document/<int:doc_id>")
+def document(doc_id: int):
+    doc = Document.query.get_or_404(doc_id)
+    return render_template("document.html", doc=doc)
+
+
+@dashboard_bp.route("/document/<int:doc_id>/delete", methods=["POST"])
+def delete_document(doc_id: int):
+    doc = Document.query.get_or_404(doc_id)
+    db.session.delete(doc)
+    db.session.commit()
+    flash("Document deleted.", "info")
     return redirect(url_for("dashboard.index"))
-
-
-@dashboard_bp.route("/document/<int:doc_id>/status")
-@login_required
-def document_status(doc_id: int):
-    """JSON endpoint so the dashboard can poll for processing status."""
-    doc = Document.query.filter_by(id=doc_id, uploaded_by=current_user.id).first_or_404()
-    return {"id": doc.id, "status": doc.status, "error": doc.error_message}

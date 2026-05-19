@@ -2,39 +2,53 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Invoice Intelligence{% endblock %}</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
 </head>
 <body>
-  {% if current_user.is_authenticated %}
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container">
-      <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">Invoice Intelligence</a>
-      <div class="navbar-nav ms-auto">
-        <a class="nav-link" href="{{ url_for('dashboard.index') }}">Documents</a>
-        <a class="nav-link" href="{{ url_for('chat.index') }}">Ask a Question</a>
-        <a class="nav-link" href="{{ url_for('auth.logout') }}">Logout ({{ current_user.username }})</a>
+
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a href="{{ url_for('dashboard.index') }}" class="nav-brand">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/></svg>
+        <span>Invoice Intelligence</span>
+      </a>
+      <div class="nav-links">
+        <a href="{{ url_for('dashboard.index') }}" class="nav-link {% if request.endpoint and 'dashboard' in request.endpoint %}active{% endif %}">
+          Dashboard
+        </a>
+        <a href="{{ url_for('chat.index') }}" class="nav-link {% if request.endpoint == 'chat.index' %}active{% endif %}">
+          Ask AI
+        </a>
       </div>
     </div>
   </nav>
-  {% endif %}
 
-  <div class="container mt-4">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      {% endfor %}
-    {% endwith %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-container">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">
+            <span>{{ message }}</span>
+            <button onclick="this.parentElement.remove()" class="flash-close">✕</button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
 
+  <main class="main-content">
     {% block content %}{% endblock %}
-  </div>
+  </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <footer class="footer">
+    <span>Invoice Intelligence &mdash; Demo</span>
+  </footer>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

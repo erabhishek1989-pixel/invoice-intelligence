@@ -1,26 +1,173 @@
 {% extends "base.html" %}
-{% block title %}Ask a Question — Invoice Intelligence{% endblock %}
+{% block title %}Ask AI — Invoice Intelligence{% endblock %}
 
 {% block content %}
-<div class="row">
-  <div class="col-md-8 offset-md-2">
-    <h2 class="mb-4">Ask About Your Finances</h2>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Ask AI</h1>
+    <p class="page-subtitle">Ask questions about your invoices in plain English</p>
+  </div>
+</div>
 
-    <div id="chat-box" class="border rounded p-3 mb-3" style="min-height:300px; background:#f8f9fa;">
-      <p class="text-muted">Ask anything — "How much did I spend last month?", "Which invoices are unpaid?"</p>
+<div class="chat-layout">
+  <!-- Messages -->
+  <div class="chat-messages" id="messages">
+    <div class="chat-welcome">
+      <div class="chat-welcome-icon">✦</div>
+      <h2>What would you like to know?</h2>
+      <p>Ask about your invoices, vendors, amounts, or payment status</p>
+      <div class="example-queries">
+        <button class="example-btn" onclick="sendExample(this)">How much total spend last month?</button>
+        <button class="example-btn" onclick="sendExample(this)">Which invoices are unpaid?</button>
+        <button class="example-btn" onclick="sendExample(this)">Who are my top 3 vendors?</button>
+        <button class="example-btn" onclick="sendExample(this)">Total tax amount this year?</button>
+      </div>
     </div>
+  </div>
 
-    <div class="input-group">
-      <input type="text" id="question-input" class="form-control"
-             placeholder="Type your question or press the mic button..." />
-      <button class="btn btn-outline-secondary" id="mic-btn" title="Voice input (Chrome only)">&#127908;</button>
-      <button class="btn btn-primary" id="send-btn">Ask</button>
+  <!-- Input -->
+  <div class="chat-input-wrap">
+    <div class="chat-input-box">
+      <button class="voice-btn" id="voice-btn" title="Voice input" onclick="toggleVoice()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+          <path d="M19 10v2a7 7 0 01-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </button>
+      <input
+        type="text"
+        id="question-input"
+        class="chat-input"
+        placeholder="Ask about your invoices…"
+        onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendQuery(); }"
+        autocomplete="off"
+      />
+      <button class="send-btn" onclick="sendQuery()" id="send-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
     </div>
-    <small class="text-muted">Voice input requires Chrome or Edge.</small>
+    <p class="chat-hint">Powered by GPT-4o · Reads your invoice database</p>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/voice.js') }}"></script>
+<script>
+let isVoice = false;
+let recognition = null;
+
+function addMessage(role, text, sql) {
+  const welcome = document.querySelector('.chat-welcome');
+  if (welcome) welcome.remove();
+
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `chat-msg chat-msg-${role}`;
+
+  if (role === 'user') {
+    div.innerHTML = `<div class="msg-bubble">${escHtml(text)}</div>`;
+  } else {
+    let inner = `<div class="msg-avatar">✦</div><div class="msg-body"><div class="msg-bubble">${escHtml(text)}</div>`;
+    if (sql) {
+      inner += `<details class="sql-details"><summary>View SQL</summary><pre class="sql-code">${escHtml(sql)}</pre></details>`;
+    }
+    inner += '</div>';
+    div.innerHTML = inner;
+  }
+
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addTyping() {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg chat-msg-assistant typing-indicator';
+  div.id = 'typing';
+  div.innerHTML = `<div class="msg-avatar">✦</div><div class="msg-bubble"><span></span><span></span><span></span></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing');
+  if (t) t.remove();
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function sendQuery(text, voice) {
+  const input = document.getElementById('question-input');
+  const question = text || input.value.trim();
+  if (!question) return;
+
+  input.value = '';
+  addMessage('user', question);
+  addTyping();
+  document.getElementById('send-btn').disabled = true;
+
+  try {
+    const res = await fetch('/api/query', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ question, was_voice: !!voice })
+    });
+    const data = await res.json();
+    removeTyping();
+
+    if (data.error) {
+      addMessage('assistant', '⚠ ' + data.error, null);
+    } else {
+      addMessage('assistant', data.answer, data.sql);
+      if (voice && 'speechSynthesis' in window) {
+        const utt = new SpeechSynthesisUtterance(data.answer);
+        utt.lang = 'en-IN'; utt.rate = 0.95;
+        window.speechSynthesis.speak(utt);
+      }
+    }
+  } catch(e) {
+    removeTyping();
+    addMessage('assistant', 'Network error — please try again.', null);
+  }
+  document.getElementById('send-btn').disabled = false;
+}
+
+function sendExample(btn) {
+  document.getElementById('question-input').value = btn.textContent;
+  sendQuery();
+}
+
+function toggleVoice() {
+  const btn = document.getElementById('voice-btn');
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert('Voice input requires Chrome or Edge.');
+    return;
+  }
+  if (isVoice) {
+    recognition && recognition.stop();
+    btn.classList.remove('voice-active');
+    isVoice = false;
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'en-IN';
+  recognition.continuous = false;
+  recognition.onstart = () => { btn.classList.add('voice-active'); isVoice = true; };
+  recognition.onresult = e => {
+    const text = e.results[0][0].transcript;
+    document.getElementById('question-input').value = text;
+    sendQuery(text, true);
+  };
+  recognition.onend = () => { btn.classList.remove('voice-active'); isVoice = false; };
+  recognition.start();
+}
+</script>
 {% endblock %}

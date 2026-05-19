@@ -1,10 +1,9 @@
 from datetime import datetime
-from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from app import db, login_manager
+from app import db
 
 
-class User(UserMixin, db.Model):
+class User(db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -21,25 +20,20 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
 
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-
-
 class Document(db.Model):
     __tablename__ = "documents"
 
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
     blob_url = db.Column(db.String(500), nullable=False)
-    status = db.Column(db.String(20), default="pending")  # pending/processing/processed/failed
+    status = db.Column(db.String(20), default="pending")
     doc_type = db.Column(db.String(50))
     uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
     processed_at = db.Column(db.DateTime)
     error_message = db.Column(db.Text)
 
-    invoice = db.relationship("Invoice", backref="document", uselist=False)
+    invoice = db.relationship("Invoice", backref="document", uselist=False, cascade="all, delete-orphan")
 
 
 class Invoice(db.Model):
@@ -56,13 +50,13 @@ class Invoice(db.Model):
     tax_amount = db.Column(db.Numeric(12, 2))
     total_amount = db.Column(db.Numeric(12, 2))
     currency = db.Column(db.String(10), default="INR")
-    payment_status = db.Column(db.String(20), default="unpaid")  # paid/unpaid/partial
-    doc_type = db.Column(db.String(20))  # purchase / sale
+    payment_status = db.Column(db.String(20), default="unpaid")
+    doc_type = db.Column(db.String(20))
     notes = db.Column(db.Text)
     raw_json = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    line_items = db.relationship("LineItem", backref="invoice", lazy=True)
+    line_items = db.relationship("LineItem", backref="invoice", lazy=True, cascade="all, delete-orphan")
 
 
 class LineItem(db.Model):

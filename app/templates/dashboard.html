@@ -1,65 +1,162 @@
 {% extends "base.html" %}
-{% block title %}Documents — Invoice Intelligence{% endblock %}
+{% block title %}Dashboard — Invoice Intelligence{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2>Documents</h2>
-  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">Upload Invoice</button>
-</div>
-
-<table class="table table-hover">
-  <thead>
-    <tr>
-      <th>Filename</th>
-      <th>Status</th>
-      <th>Uploaded</th>
-      <th>Processed</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for doc in documents %}
-    <tr>
-      <td>{{ doc.filename }}</td>
-      <td>
-        <span class="badge
-          {% if doc.status == 'processed' %}bg-success
-          {% elif doc.status == 'failed' %}bg-danger
-          {% elif doc.status == 'processing' %}bg-warning text-dark
-          {% else %}bg-secondary{% endif %}">
-          {{ doc.status }}
-        </span>
-      </td>
-      <td>{{ doc.uploaded_at.strftime('%d %b %Y %H:%M') }}</td>
-      <td>{{ doc.processed_at.strftime('%d %b %Y %H:%M') if doc.processed_at else '—' }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="4" class="text-muted">No documents yet. Upload your first invoice.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-<!-- Upload Modal -->
-<div class="modal fade" id="uploadModal" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <form method="POST" action="{{ url_for('dashboard.upload') }}" enctype="multipart/form-data">
-        <div class="modal-header">
-          <h5 class="modal-title">Upload Invoice / Receipt</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-3">
-            <label for="file" class="form-label">Select file (PDF, JPG, PNG — max 10 MB)</label>
-            <input type="file" id="file" name="file" class="form-control"
-                   accept=".pdf,.jpg,.jpeg,.png" required />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Upload</button>
-        </div>
-      </form>
-    </div>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Documents</h1>
+    <p class="page-subtitle">Upload invoices and receipts for AI extraction</p>
   </div>
 </div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.total }}</div>
+    <div class="stat-label">Total Documents</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value text-success">{{ stats.processed }}</div>
+    <div class="stat-label">Processed</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value text-warning">{{ stats.pending }}</div>
+    <div class="stat-label">Pending</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">₹{{ "{:,.0f}".format(stats.total_spend) }}</div>
+    <div class="stat-label">Total Extracted Value</div>
+  </div>
+</div>
+
+<!-- Upload -->
+<div class="card upload-card" id="upload-card">
+  <form method="POST" action="{{ url_for('dashboard.upload') }}" enctype="multipart/form-data" id="upload-form">
+    <div class="upload-area" id="drop-zone">
+      <input type="file" name="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png" style="display:none" />
+      <div class="upload-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <p class="upload-title">Drop your invoice here</p>
+      <p class="upload-sub">or <button type="button" class="upload-browse" onclick="document.getElementById('file-input').click()">browse files</button></p>
+      <p class="upload-hint">PDF, JPG, PNG · max 10 MB</p>
+    </div>
+    <div class="upload-file-info" id="file-info" style="display:none">
+      <span class="file-name" id="file-name"></span>
+      <button type="submit" class="btn btn-primary" id="upload-btn">
+        <span id="btn-text">Process Invoice</span>
+        <span id="btn-spinner" style="display:none">
+          <span class="spinner"></span> Processing…
+        </span>
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Document list -->
+{% if documents %}
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Recent Documents</h2>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Vendor</th>
+          <th>Amount</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in documents %}
+        <tr>
+          <td>
+            <a href="{{ url_for('dashboard.document', doc_id=doc.id) }}" class="doc-link">
+              {{ doc.filename }}
+            </a>
+          </td>
+          <td class="text-muted">
+            {% if doc.invoice %}{{ doc.invoice.vendor_name or '—' }}{% else %}—{% endif %}
+          </td>
+          <td class="text-mono">
+            {% if doc.invoice and doc.invoice.total_amount %}
+              {{ doc.invoice.currency }} {{ "{:,.2f}".format(doc.invoice.total_amount) }}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-muted">
+            {% if doc.invoice and doc.invoice.invoice_date %}
+              {{ doc.invoice.invoice_date.strftime('%d %b %Y') }}
+            {% else %}
+              {{ doc.uploaded_at.strftime('%d %b %Y') }}
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge badge-{{ doc.status }}">{{ doc.status }}</span>
+          </td>
+          <td>
+            <a href="{{ url_for('dashboard.document', doc_id=doc.id) }}" class="btn-icon" title="View">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">📄</div>
+  <h3 class="empty-title">No documents yet</h3>
+  <p class="empty-sub">Upload your first invoice above to get started</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileInfo = document.getElementById('file-info');
+const fileName = document.getElementById('file-name');
+const form = document.getElementById('upload-form');
+const btnText = document.getElementById('btn-text');
+const btnSpinner = document.getElementById('btn-spinner');
+
+function showFile(file) {
+  if (!file) return;
+  fileName.textContent = file.name;
+  fileInfo.style.display = 'flex';
+}
+
+fileInput.addEventListener('change', () => showFile(fileInput.files[0]));
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    showFile(file);
+  }
+});
+
+form.addEventListener('submit', () => {
+  btnText.style.display = 'none';
+  btnSpinner.style.display = 'inline-flex';
+  document.getElementById('upload-btn').disabled = true;
+});
+</script>
 {% endblock %}
