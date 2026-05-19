@@ -287,6 +287,10 @@ resource "azurerm_linux_web_app" "main" {
     "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
     "FLASK_ENV"                      = "production"
     "FLASK_APP"                      = "wsgi"
+
+    # Auto-create admin user on first startup (see app/__init__.py)
+    "ADMIN_USERNAME" = var.admin_username
+    "ADMIN_PASSWORD" = var.admin_password
   }
 
   logs {

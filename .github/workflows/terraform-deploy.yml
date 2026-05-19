@@ -68,7 +68,8 @@ jobs:
             -input=false \
             -detailed-exitcode \
             -out=tfplan \
-            -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}"
+            -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}" \
+            -var="admin_password=${{ secrets.ADMIN_PASSWORD }}"
         continue-on-error: true
 
       - name: Upload plan artifact

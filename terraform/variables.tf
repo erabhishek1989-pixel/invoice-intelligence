@@ -40,6 +40,18 @@ variable "openai_deployment_name" {
   default     = "gpt-4o"
 }
 
+variable "admin_username" {
+  description = "Admin user created automatically on first app startup"
+  type        = string
+  default     = "admin"
+}
+
+variable "admin_password" {
+  description = "Password for the auto-created admin user"
+  type        = string
+  sensitive   = true
+}
+
 locals {
   suffix = "${var.environment}-${var.location}"
 
