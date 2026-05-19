@@ -1,12 +1,14 @@
 name: Terraform Destroy
 
-# Tears down all Azure resources to save cost at night.
-# Uses Terraform destroy (not portal deletion) so the azurerm provider
-# can properly purge soft-deleted Key Vault and Cognitive Services accounts.
-# This means next morning's apply has zero 409 conflicts.
+# Tears down all Azure resources to save cost overnight.
+# Uses terraform destroy so the azurerm provider cleanly purges
+# soft-deleted Key Vault and Cognitive Services — zero 409 conflicts
+# when the deploy pipeline recreates everything next day.
 #
-# Schedule: 01:00 IST = 19:30 UTC, every day.
-# Manual: Actions → Terraform Destroy → Run workflow → type "destroy".
+# Schedule: 00:00 UTC daily = 01:00 BST (summer) / 00:00 GMT (winter)
+# GitHub Actions cron is always UTC — no DST support.
+#
+# Manual: Actions → Terraform Destroy → Run workflow → type "destroy"
 
 on:
   workflow_dispatch:
@@ -15,7 +17,7 @@ on:
         description: 'Type "destroy" to confirm deletion of all Azure resources'
         required: true
   schedule:
-    - cron: "30 19 * * *" # 01:00 IST every day (IST = UTC+5:30)
+    - cron: "0 0 * * *" # 00:00 UTC = 01:00 BST / 00:00 GMT
 
 permissions:
   id-token: write
@@ -35,7 +37,7 @@ jobs:
 
     steps:
       - name: Validate manual confirmation
-        # Skip this check for scheduled runs (github.event_name == 'schedule')
+        # Scheduled runs skip this check automatically
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'destroy'
         run: |
           echo "ERROR: You must type 'destroy' to confirm. Got: '${{ github.event.inputs.confirm }}'"
@@ -66,13 +68,16 @@ jobs:
           terraform destroy \
             -input=false \
             -auto-approve \
-            -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}"
-        # The provider's features block handles soft-delete purging on destroy:
+            -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}" \
+            -var="admin_password=${{ secrets.ADMIN_PASSWORD }}"
+        # provider features block handles soft-delete purging automatically:
         #   key_vault.purge_soft_delete_on_destroy        = true
         #   cognitive_account.purge_soft_delete_on_destroy = true
-        # So next morning's apply sees no soft-deleted resources.
 
-      - name: Done
+      - name: Summary
         run: |
-          echo "All Azure resources destroyed at $(date -u '+%Y-%m-%d %H:%M UTC')"
-          echo "Run the Terraform Deploy workflow tomorrow to recreate everything."
+          echo "========================================"
+          echo " All Azure resources destroyed"
+          echo " Time: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo " Run the Deploy workflow to recreate."
+          echo "========================================"
