@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature]
   workflow_dispatch:
 
 permissions:
@@ -111,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: tf-plan
     if: |
-      github.ref == 'refs/heads/main' &&
+      github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature' &&
       needs.tf-plan.outputs.plan_exitcode == '2'
 
     steps:
@@ -177,7 +177,7 @@ jobs:
       always() &&
       needs.tf-plan.result != 'failure' &&
       (needs.tf-apply.result == 'success' || needs.tf-apply.result == 'skipped') &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature'
 
     steps:
       - name: Checkout
