@@ -201,43 +201,6 @@ resource "azurerm_cognitive_account" "openai" {
 # Create the gpt-4o deployment manually in Azure Portal once quota is approved:
 # Azure OpenAI Studio → Deployments → Deploy model → gpt-4o
 
-# ─── Virtual Network ─────────────────────────────────────────────────────────
-
-resource "azurerm_virtual_network" "main" {
-  name                = "vnet-${var.project}-${local.suffix}-001"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  address_space       = ["10.0.0.0/16"]
-  tags                = local.common_tags
-}
-
-# Subnet for App Service VNet integration (outbound).
-# Service endpoints let the subnet reach SQL and Storage via Azure backbone
-# without needing private endpoints or custom DNS.
-resource "azurerm_subnet" "app_service" {
-  name                 = "snet-app-${local.suffix}"
-  resource_group_name  = azurerm_resource_group.main.name
-  virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.0.2.0/24"]
-
-  service_endpoints = ["Microsoft.Sql", "Microsoft.Storage"]
-
-  delegation {
-    name = "app-service"
-    service_delegation {
-      name    = "Microsoft.Web/serverFarms"
-      actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
-    }
-  }
-}
-
-# Allow the app_service subnet to connect to SQL via service endpoint.
-resource "azurerm_mssql_virtual_network_rule" "app_service" {
-  name      = "vnet-rule-app-service"
-  server_id = azurerm_mssql_server.main.id
-  subnet_id = azurerm_subnet.app_service.id
-}
-
 # ─── App Service Plan ────────────────────────────────────────────────────────
 
 resource "azurerm_service_plan" "main" {
@@ -252,12 +215,11 @@ resource "azurerm_service_plan" "main" {
 # ─── App Service ─────────────────────────────────────────────────────────────
 
 resource "azurerm_linux_web_app" "main" {
-  name                      = "app-${var.project}-${local.suffix}-001"
-  location                  = azurerm_resource_group.main.location
-  resource_group_name       = azurerm_resource_group.main.name
-  service_plan_id           = azurerm_service_plan.main.id
-  https_only                = true
-  virtual_network_subnet_id = azurerm_subnet.app_service.id
+  name                = "app-${var.project}-${local.suffix}-001"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  service_plan_id     = azurerm_service_plan.main.id
+  https_only          = true
 
   identity {
     type = "SystemAssigned"
@@ -344,7 +306,6 @@ resource "azurerm_linux_function_app" "main" {
   storage_account_name       = azurerm_storage_account.function.name
   storage_account_access_key = azurerm_storage_account.function.primary_access_key
   https_only                 = true
-  virtual_network_subnet_id  = azurerm_subnet.app_service.id
 
   identity {
     type = "SystemAssigned"
