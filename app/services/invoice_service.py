@@ -104,7 +104,8 @@ def _extract_fields(result) -> dict:
         out["currency"]      = currency or "INR"
 
         items_field = doc.fields.get("Items")
-        if items_field and items_field.confidence >= CONFIDENCE_THRESHOLD:
+        conf = getattr(items_field, "confidence", None) if items_field else None
+        if items_field and (conf is None or conf >= CONFIDENCE_THRESHOLD):
             out["line_items"] = _extract_line_items(items_field)
         else:
             out["line_items"] = []
