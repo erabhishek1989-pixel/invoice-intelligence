@@ -110,9 +110,7 @@ jobs:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: tf-plan
-    if: |
-      github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature' &&
-      needs.tf-plan.outputs.plan_exitcode == '2'
+    if: needs.tf-plan.outputs.plan_exitcode == '2'
 
     steps:
       - name: Checkout
@@ -176,8 +174,7 @@ jobs:
     if: |
       always() &&
       needs.tf-plan.result != 'failure' &&
-      (needs.tf-apply.result == 'success' || needs.tf-apply.result == 'skipped') &&
-      github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature'
+      (needs.tf-apply.result == 'success' || needs.tf-apply.result == 'skipped')
 
     steps:
       - name: Checkout
