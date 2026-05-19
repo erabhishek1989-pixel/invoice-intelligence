@@ -31,7 +31,16 @@ def create_app():
     from app import models  # noqa: ensure models registered
     with app.app_context():
         try:
-            db.create_all()
+            # Run pending Alembic migrations (adds new columns, etc.)
+            # Falls back to create_all for brand-new databases with no
+            # migration history (e.g. fresh Azure SQL after terraform apply).
+            from flask_migrate import upgrade as db_upgrade
+            try:
+                db_upgrade()
+                logger.info("DB migrations applied")
+            except Exception as migrate_err:
+                logger.warning("flask db upgrade failed (%s) — falling back to create_all", migrate_err)
+                db.create_all()
             _ensure_demo_user()
         except Exception as e:
             logger.warning("Startup DB init skipped: %s", e)
