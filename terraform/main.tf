@@ -220,6 +220,8 @@ resource "azurerm_subnet" "app_service" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.2.0/24"]
 
+  service_endpoints = ["Microsoft.Sql"]
+
   delegation {
     name = "app-service"
     service_delegation {
@@ -227,6 +229,13 @@ resource "azurerm_subnet" "app_service" {
       actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
     }
   }
+}
+
+# Allow subnet to reach SQL — covers both apps regardless of VNet integration state
+resource "azurerm_mssql_virtual_network_rule" "app_service" {
+  name      = "vnet-rule-app-service"
+  server_id = azurerm_mssql_server.main.id
+  subnet_id = azurerm_subnet.app_service.id
 }
 
 # ─── App Service Plan ────────────────────────────────────────────────────────
