@@ -40,6 +40,11 @@ def process_document(doc: Document) -> Invoice:
     # Download bytes from private blob and stream to Document Intelligence
     from app.services.blob_service import download_blob_bytes
     import io
+    if not doc.blob_name:
+        raise RuntimeError(
+            "blob_name is missing on this document — it was uploaded before "
+            "the column was added. Please delete and re-upload the file."
+        )
     file_bytes = download_blob_bytes(doc.blob_name)
 
     client = DocumentAnalysisClient(endpoint, AzureKeyCredential(key))
@@ -86,30 +91,35 @@ def process_document(doc: Document) -> Invoice:
 # ── Field extraction ──────────────────────────────────────────────────────────
 
 def _extract_fields(result) -> dict:
-    out = {}
-    for doc in result.documents:
-        out["vendor_name"]    = _str_field(doc.fields.get("VendorName"))
-        out["vendor_address"] = _address_field(doc.fields.get("VendorAddress"))
-        out["invoice_number"] = _str_field(doc.fields.get("InvoiceId"))
-        out["invoice_date"]   = _date_field(doc.fields.get("InvoiceDate"))
-        out["due_date"]       = _date_field(doc.fields.get("DueDate"))
+    out = {"line_items": []}
 
-        subtotal,      _        = _currency_field(doc.fields.get("SubTotal"))
-        tax_amount,    _        = _currency_field(doc.fields.get("TotalTax"))
-        total_amount,  currency = _currency_field(doc.fields.get("InvoiceTotal"))
+    if not result.documents:
+        raise RuntimeError(
+            "Document Intelligence could not detect an invoice in this file. "
+            "Please upload a clear invoice, receipt or bill (PDF or image)."
+        )
 
-        out["subtotal"]      = subtotal
-        out["tax_amount"]    = tax_amount
-        out["total_amount"]  = total_amount
-        out["currency"]      = currency or "INR"
+    doc = result.documents[0]  # use first detected document only
 
-        items_field = doc.fields.get("Items")
-        conf = getattr(items_field, "confidence", None) if items_field else None
-        if items_field and (conf is None or conf >= CONFIDENCE_THRESHOLD):
-            out["line_items"] = _extract_line_items(items_field)
-        else:
-            out["line_items"] = []
-        break  # first document only
+    out["vendor_name"]    = _str_field(doc.fields.get("VendorName"))
+    out["vendor_address"] = _address_field(doc.fields.get("VendorAddress"))
+    out["invoice_number"] = _str_field(doc.fields.get("InvoiceId"))
+    out["invoice_date"]   = _date_field(doc.fields.get("InvoiceDate"))
+    out["due_date"]       = _date_field(doc.fields.get("DueDate"))
+
+    subtotal,      _        = _currency_field(doc.fields.get("SubTotal"))
+    tax_amount,    _        = _currency_field(doc.fields.get("TotalTax"))
+    total_amount,  currency = _currency_field(doc.fields.get("InvoiceTotal"))
+
+    out["subtotal"]      = subtotal
+    out["tax_amount"]    = tax_amount
+    out["total_amount"]  = total_amount
+    out["currency"]      = currency or "INR"
+
+    items_field = doc.fields.get("Items")
+    conf = getattr(items_field, "confidence", None) if items_field else None
+    if items_field and (conf is None or conf >= CONFIDENCE_THRESHOLD):
+        out["line_items"] = _extract_line_items(items_field)
 
     out["raw_json"] = json.dumps(result.to_dict(), default=str)
     return out
